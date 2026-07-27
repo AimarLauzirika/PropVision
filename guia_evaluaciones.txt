@@ -1,0 +1,173 @@
+PROPÓSITO
+Calcular la probabilidad de superar evaluaciones de prop firms mediante simulaciones Monte Carlo, comparando combinaciones de TP/SL, Reset_trades y Prices, y mostrando métricas agregadas y logs por trade.
+Muchas de las cuentas de fondeo requieren superar una evaluación y quiero empezar por calcular cómo de probable es superar una determinada fase de evaluación con unas reglas y objetivos determinados y probar con diferentes TPs (Take Profits) SLs (Stop Losses) para encontrar el sistema óptimo. Para ello he pensado en utilizar simulaciones de montecarlo para simular los posibles resultados de trading (con resultados de trades aleatorios, incluyendo costes de operación) y la evolución de una cuenta de evaluación, y con esos datos determinar la dificultad y los costes de superar una evaluación.
+
+Simulaciones de evaluaciones
+Para realizar las simulaciones de las evaluaciones se requerirán las condiciones de las evaluaciones y algunas variables. Las condiciones y las variables de las cuentas concretas se obtendrán de la base de datos que tengo en Supabase al que te daré acceso.
+
+Condiciones:
+Capital inicial (accounts.initial_balance)
+Objetivo (accounts.e1_target_usd)
+Tipo de drawdown (accounts.e_mdd_type)
+Drawdown máximo (accounts.a_mdd_usd)
+Drawdown diário (accounts.e_ddd_usd)
+MDD account (accounts.e_highest_mdd_account)
+Consistencia (accounts.e_consistency_pct)
+Días mínimos de trading (accounts.e_min_days)
+Días mínimos de beneficio (accounts.e_min_profit_days)
+Día de beneficio (accounts.a_profit_day_usd)
+Tipo de suscripción (accounts.e_suscription_type)
+Coste de activación (accounts.activation_fee_usd)
+Tipo de activación (accounts.activation_fee_type)
+
+Variables:
+TPs (accounts.e_tps_usd)
+SLs (accounts.e_sls_usd)
+Reset_trades (de 0 a 15, solo si accounts.reset_prices no es NULL. Si accounts.reset_prices es NULL Reset_trades será 0 y no variará)
+Mode ('fixed' o 'variable')
+Prices (accounts.eval_prices)
+
+Los TPs, SLs, Reset_trades y Prices tienen cada una diferentes opciones, por lo que habrá que hacer una simulación de montecarlo para cada una de las posible combinaciones. Todas las combinaciones se agruparán por las variables Prices.
+
+CUENTA
+Se especificará la cuenta a la que se realizará la simulación mediante su ID. Tendremos acceso a la información de la cuenta a través de la base de datos de Supabase mediante la tabla 'accounts' y la cuenta corresponderá al registro que coincida con ID == accounts.id. La información de la compañía que corresponde a dicha cuenta se encuentra en la tabla 'companies' de la base de datos y la compañía correspondiente a la cuenta será accounts.company_id == companies.id
+
+PROCESO
+Las probabilidades de superar evaluaciones serán distintos para cada combinación de variables, por lo que se debe realizar una simulación de montecarlo para cada combinación, mostrar los resultados de todas las combinaciones y seleccionar el que tenga el menor coste promedio para superar la evaluación.
+Para cada combinación se realizarán 200000 simulaciones, y se obtendrán los datos de: 
+- número de simulaciones (cuentas compradas), 
+- total de número de renews, 
+- total de número de resets, 
+- total de número de evaluaciones superadas, 
+- el coste por una cuenta fondeada (incluyendo el coste de activación) y 
+- número de trades promedio.
+
+Combinaciones
+Como hemos visto, las combinaciones serán todas las que las variables permitan. Todas las combinaciones se clasificarán por Prices, luego por cada precio se empezarán a dividir por Mode, después SLs, luego, TPs y finalmente por Reset_trades.
+
+Hay parámetros que se calcularán una vez para cada combinación:
+- TP: Es el TP correspondiente a la simulación actual.
+- SL: Es el SL correspondiente a la simulación actual.
+- Reset_trades: El máximo número de trades que puede haber para realizar un reset. Correspondiente a la combinación actual.
+- Price_eval: El precio de la evaluación correspondiente a la simulación actual.
+- Reset_cost: El coste del reset. El coste del reset se encuentra en accounts.reset_prices. Puede ser NULL, puede ser una lista de un número (si es el caso, ese número será el coste del reset), o puede ser una lista de números, y en este caso tendremos que obtener el índice del Price_eval de la lista accounts.eval_prices para utilizar ese índice en la lista de costes de resets para localizar el coste del reset actual.
+- Commission: Es la comisión en dólares por trade, se calcula de la siguiente manera; partiendo del mayor entre el TP y el SL, se divide entre 500 y se multiplica por 6. Y como mínimo será un 6.
+- Target_initial: Será igual a accounts.e1_target_usd.
+- Target_consist.: Si la evalución tiene regla de consistencia (si accounts.e_consistency_pct es distinto a NULL y es tambien distinto a 100) se calculará así; accounts.initial_balance + TP / (accounts.e_consistency_pct / 100). Si la evaluación no tiene regla de consistencia, será 0.
+- Target_eval: Será el mayor entre Target_initial y Target_consist.
+- Coste de activación: Si el tipo de activación es 'always', el coste de activación será accounts.activation_fee_usd, y si el tipo de activación es no es 'always', entoces el coste de ativación será 0.
+
+Simulación de una cuenta de evaluación
+En cada una de las combinaciones se simularán 200000 evaluaciones (cuentas), y en cada evaluación se simularán los trades realizados. Para cada trade se calcularán los siguientes parámetros:
+- Days: Número de días con trades en la cuenta. Con el primer trade empieza en 1 y se incrementará con cada trade. No se resetea.
+- MDD: Es el drawdown máximo. Si es el primer trade de la cuenta o se realizó un reset en el trade anterior se obtendrá con el siguiente cálculo; accounts.initial_balance - accounts.a_mdd_usd. Si no es el primer trade será igual al MDD_after del trade anterior.
+- MDD_trailing: Si el tipo de drawdown de la cuenta (accounts.e_mdd_type) es 'trailing' se calculará de la siguiente manera: MDD + TP * (un número aleatorio entre 0.2 y 0.5). Si el mdd no es de tipo trailing, el MDD_trailing será 0.
+- MDD_used: El mayor entre MDD y MDD_trailing.
+- Balance: Si es el primer trade o se realizó un reset en el trade anterior, el balance será el balance inicial de la cuenta (accounts.initial_balance). Si no es el primer trade, será igual al Balance_after del trade anterior.
+- Profit_remaining: Target_eval - Balance.
+- TP_used: Si el Mode es 'fixed', TP_used será el que sea menor entre TP y ((Target_eval - Balance) + Commission). Si el Mode es 'variable', y Trades_remaining o Profit_days_remaining es mayor que 0, TP_used será (Profit_remaining / (Trades_remaining o Profit_days_remaining) + Commission).
+- SL_used: El que sea menor entre SL y Balance - MDD_used.
+- Prob_tp: Probabilidad de que un trade termine en TP. Se calcula de la siguiente manera; SL_used / (TP_used + SL_used)
+- Rndm: Número aleatorio (random). Utilizar un número aleatorio entre 0 y 1.
+- Trade_result: Si Rndm es inferior a Prob_tp, entonces, TP_used, si no, SL_used * -1.
+- DDD_exceeded: Será True si la cuenta tiene drawdown diario (accounts.e_ddd_usd) y si Trade_result es inferior a accounts.e_ddd_usd * -1. Si no cumple con las condiciones para ser True, sera False.
+- Balance_after: Balance + Trade_result. Si Balance_after <= MDD_used y Days <= Reset_trades, entonces se resetea la cuenta (Reset_cost). Si Balance_after <= MDD_used y Days > Reset_trades, entoces se suspene la evaluación y se cierra la cuenta.
+- Peak_balance: El mayor entre Balance, Balance_after y Peak_balance. Si en el trade anterior ha habido un reset Peak_balance será el mayor entre Balance y Balance_after.
+- MDD_after: El mayor entre MDD_used y Peak_balance - accounts.a_mdd_usd, pero como máximo accounts.e_highest_mdd_account. Si el tipo de drawdown (accounts.e_mdd_type) es 'static', el MDD_after no cambiará, siempre será accounts.initial_balance - accounts.a_mdd_usd.
+- Trades: Con el primer trade empieza en 1 y se incrementará con cada trade. Vuelve al 0 si en el trade anterior se realizó un reset.
+- Trades_days: accounts.e_min_days - Trades, mínimo 0. Si accounts.e_min_days == NULL se considerará accounts.e_min_days como 0.
+- Profits: Empieza en 0. Si la evaluación requiere un mínimo de días de beneficio (accounts.e_min_profit_days) se incrementará si el trade actual es mayor que accounts.a_profit_day_usd. Si en el trade anterior se realizó un reset se reseteará a 0.
+- Profit_days: accounts.e_min_profit_days - Profit_days, mínimo 0. Si accounts.e_min_profit_days == NULL se considerará accounts.e_min_profit_days como 0.
+- Trades_for_reset: Con el primer trade empieza en 1 y se incrementará con cada trade. Vuelve al 0 si en el trade anterior se realizó un renew.
+- Resets: El número de resets que se han realizado en la cuenta. Se podrá realizar un reset sólo si el coste de Reset_cost no es NULL y es inferior al precio de la evaluación actual. Se realizará un reset si (Balance <= MDD_used o DDD_exceeded) y Trades_for_reset <= Reset_trades.
+- Renews: El número de renews que se han realizado en la cuenta. Solo se realizarán renews si accounts.e_suscription_type == 'monthly'. Se realizará un renew cuando Days == 20 y (Target_eval - Balance_after) < (Balance_after - MDD_used). Si Days == 20 y (Target_eval - Balance_after) > (Balance_after - MDD_used) se suspende la evaluación. Si accounts.e_suscription_type == 'one_time_30_days' y Days >= 20, se suspende la evaluación.
+- Cost: Si es el primer trade, el coste sera Price_eval. Si se ha realizado un reset, el coste será Reset_cost. Y si se ha realizado un renew el coste será Price_eval. Si no es ninguno de los anteriores entonces será 0.
+- Total_cost: Será Total_cost del trade anterior + Cost.
+
+Todos estos parámetros se calcularán en cada trade
+
+
+Terminaciones
+Las cuentas de evaluación pueden terminar con diferentes resultados de diferentes maneras:
+- Evaluación suspendida. Si ALGUNA de las siguientes es correcta,
+  - Por MDD (máx drawdown): Si el Balance_after <= MDD_used
+  - Por DDD (drawdown diario): Si la cuenta tiene drawdown diario (accounts.e_ddd_usd) y si Trade_result es inferior a accounts.e_ddd_usd * -1.
+  - Por tiempo: Si accounts.e_suscription_type es 'one_time_30_days' y Days >= 20.
+  - Porque no combiene un renew: Si Days == 20 y (Target_eval - Balance_after) > (Balance_after - MDD_used) se suspende la evaluación.
+- Evauación superada. Si la evaluación no ha sido suspendida y se han cumplido TODOS los objetivos. Los objetivos son:
+  - Objetivo de la cuenta: Si Balance_after >= Target_eval.
+  - Objetivo de días mínimo de trading: Si Trades_remaining == 0.
+  - Objetivo de días mínimo de beneficio: Si Profit_days_remaining == 0.
+
+
+RESULTADOS
+El objetivo de las simulaciones es determinar los resultados esperados de media y la peor racha para cada combinación, y así, dar con la combinación más favorable. Por lo que, después de terminar con las simulaciones, quiero ver los resultados de todas las combinaciones, por ejemplo en una lista o una tabla. Los resultados que quiero ver para cada una de las combinaciones son:
+- Price: El precio correspondiente de la combinación.
+- Mode: 'fixed' o 'variable' correspondiente de la combinación.
+- Reset_trades: El correspondiente de la combinación.
+- TP: El TP correspondiente de la combinación.
+- SL: El SL correspondiente de la combinación.
+(Los anteriores un poco diferenciados visualmente de los siguientes, ya que corresponden a las variables de las combinaciones)
+- Num_sims; por defecto 200000 para cada combinación, pero se podrá modificar por el usuario. Mínimo 1 y máximo 500000.
+- Num_evals; número de simulaciones + número de resets en total.
+- Num_passed; La cantidad total de veces que se ha superado una evaluación, es decir que a cumplido con todos los objetivos de la evaluación (Balance >= Target_eval, Trades_remaining == 0 y Profit_days_remaining == 0).
+- Prob_pass; Número de evaluaciones superadas / Número de evaluaciones.
+- Num_resets; Número total de resets.
+- Num_renews; Número total de renews.
+- Cost_total; La suma total de todos los costes.
+- Cost_pass; Coste total / Número de evaluaciones superadas.
+- Cost_fund; Si Tipo de activación == 'always', Coste fondeada = Coste de superar la evaluación + Coste de activación. Si Tipo de activación != 'always', Coste fondeada = Coste de superar la evaluación = Coste de activación. (Destacar visualmente este dato, es el más importante de todas)
+- Trades_avg; La media de Trades de las evaluaciones.
+- Breached_streak; Número máximo de evaluaciones sin superar consecutivas.
+- Cost_streak; Mayor acumulación de costes hasta superar una evaluación;
+
+EJEMPLOS
+Además de los resultados de las simulaciones de montecarlo, quiero poder ver cómo es la evolución de una cuenta en concreto trade a trade con todos los parámetros (Days, MDD, MDD_trailing, MDD_used, etc.). 
+
+INTERFACE
+
+Buscador
+Lo primero es seleccionar una o varias cuentas para realizar las simulaciones. Todas las cuentas disponibles están en la base de datos de Supabase en la tabla accounts. Se mostrará una lista o tabla con todas las cuentas disponibles que tendrá un scroll vertical, ya que el número de cuentas disponibles es muy grande. Se podrán filtrar las cuentas por compañía, las compañías están en la tabla companies de la base de datos de Supabase, y cada cuenta está relacionada con la compañía por accounts.company_id == companies.id. Cada cuenta se podrá seleccionar (con un checkbox o un sistema con la misma función), pudiendo seleccionar varias cuentas a la vez, además de que exista la opción de marcar o desmarcar todas las cuentas que se estén mostrando.
+
+También debe haber un buscador por texto que vaya filtrando las cuentas que se muestran a medida que se escriba en ella.
+
+Configurar las simulaciones
+Hay algunas opciones de las simulaciones que se podrán configurar:
+- Número de simulaciones: Mínimo 1, máximo 500000, y por defecto 200000.
+- Mode: Los modos de la simulación son 'fixed' y 'variable', por defecto se utilizarán ambos, generando diferentes combinaciones con ambos modos, pero será posible utilizar solo uno de los dos, así, no se generarán combinaciones con el otro modo. Pero es necesario que al menos uno de los dos esté seleccionado.
+- Reset_trades: es un rango de números enteros, por defecto entre 0 y 15, generando diferentes combinaciones con cada uno de ellos. El número mínimo es 0, el máximo es 20, y el segundo tiene que ser igual o mayor al primero. Es posible que los dos números sean el mismo, lo que supone que se generarán las combinaciones sólo con ese número de Reset_trades.
+- Botón para empezar la simulación.
+
+Tanto el buscador como la configuración de las simulaciones se podrán ocultar y mostrar con un click para librar espacio en la pantalla. Cuando se ejecuten las simulaciones y se muestren los resultados, se ocultarán automáticamente.
+
+Resultados de las simulaciones
+Como es posible hacer simulaciones de más de una cuenta cada vez, y los resultados de cada una de las cuentas muestra mucha información, no se mostrarán los resultados de todas las cuentas a la vez, se mostrarán los resultados de una cuenta. Se mostrará un sistema para seleccionar de entre las distintas cuentas simuladas (por ejemplo una lista desplegable, u otra manera) y al seleccionar una cuenta se mostrarán los resultados de cada una de las combinaciones de esa cuenta. Los resultados que se deben mostrar son todos los que se mencionan en el apartado RESULTADOS de este documento (Price, Mode, Reset_trades, TP, SL, Num_sims, Num_evals, Num_passed, etc.). Hay que hacer que el dato de Cost_fund destaque visualmente ya que es el más importante. También tiene que haber una manera de generar un ejemplo de simulación en cada combinación. La combinación que tenga el Cost_fund menor se resaltará visualmente ya que es la combinación óptima.
+
+Ejemplo
+Quiero poder ver cómo se ejecutan las simulaciones para poder comprobar si se ejecuta como yo espero. Para eso está la opción de mostrar un ejemplo, esto lo que hace es que para la combinación seleccionada, se ejecutará una simulación de una única evaluación y se mostrará todo el proceso trade a trade con toda la información de cada trade con todos los parámetros (Days, MDD, MDD_trailing, MDD_used, etc.). Para ello quiero que se identifique tanto la cuenta, la combinación de la que estoy realizando el ejemplo y los parámetros que se calcularán una vez para cada combinación que no coincidan con los de la combinación (Price_eval, Reset_cost, Commission, etc.). Se debe añadir una opción para generar un nuevo ejemplo, que quitará el ejemplo anterior y mostrará uno nuevo, para poder comprobar ejemplos con diferentes desarrollos. Sólo se mostrará un ejemplo cada vez, por lo que si genero otro ejemplo de otra combinación o cuenta mientras se esté mostrando otro ejemplo, se quitará el anterior para sólo mostrar el nuevo.
+
+Cómo nombrar las cuentas
+A lo largo de todo el interface de la app, las cuentas se nombrarán de la siguiente manera: Nombre corto de la empresa (companies.short_name) con id de la empresa entre paréntesis - Nombre de la cuenta (accounts.name) con id de la cuenta entre paréntesis. Ejemplo: E2T(13) - GAU50(148). La compañía que corresponde con la cuenta se relaciona de la siguiente manera. accounts.company_id == companies.id. El id de la empresa se ubica en companies.id y el id de la cuenta en accounts.id.
+
+
+ESCALABILIDAD
+Hasta aquí, la app sólo realiza simulaciones de las evaluaciones de las cuentas de fondeo, pero será mucho más completa, por lo que se deberá realizar el proyecto teniendo en cuenta como se pretende que sea al final.
+
+Evaluaciones
+Cuando vea que la app genera las simulaciones de las evaluaciones correctamente, generaré una tabla en la base de datos para guardar los resultados de las simulaciones, junto con las condiciones de la cuenta al momento de realizar las simulaciones.
+
+Cuentas Fondeadas
+El objetivo final de la app es determinar cómo de rentable es operar con cuentas de fondeo, y para eso se tienen que simular las cuentas fondeadas. Las simulaciones de las evaluaciones determinarán cuál es el coste estimado de conseguir una cuenta fondeada, y con las simulaciones de las cuentas fondeadas se determinará cuánto dinero puedo esperar obtener al operar las cuentas fondeadas. Y para ello se realizarán también simulaciones de las cuentas fondeadas, que generarán nuevos resultados que se guardarán en la base de datos. Para realizar las simulaciones de las cuentas fondeadas, se utilizará una página diferente de la app.
+
+Resultados de las cuentas
+Teniendo los resultados de las evaluaciones y de las cuentas fondeadas, se podrán mostrar los resultados de las cuentas completas, ver cómo de rentables son y compararlas entre ellas. Para ello habrá otra página mostrando estos resultados.
+
+Condiciones de las cuentas
+Habrá otra página donde se muestre cuáles son las condiciones de las cuentas, se podrán editar y se podrán crear nuevas cuentas desde esta página. Me refiaro como condiciones de las cuentas a los campos de la tabla accounts en la base de datos.
+
+
+DIRECTRICES
+La app tiene que estar orientada a optimizar la velocidad de ejecución y, teniendo en cuenta que se pretende hacer simulaciones de montecarlo de 200000 ciclos con cada una de las combinaciones, sería conveniente hacer uso de la paralelización. Evaluar cuál es la mejor manera de optimizar la velocidad de ejecución, ya sea realizar simulaciones de diferentes cuentas (si se van a realizar simulaciones de más de una cuenta) paralelamente, realizar simulaciones de las diferentes combinaciones de una cuenta paralelamente, alguna otra manera que optimice la velocidad de ejecución, o varias de las opciones a la vez.
+
+IMPLEMENTACIÓN
+Desarrollar la app con python creando un entorno virtual para realizar todas las instalaciones en un entorno controlado. Usa `.env` o variables de entorno para `SUPABASE_URL` y `SUPABASE_KEY`. Determinar cuál es la mejor forma de organizar el proyecto teniendo en cuenta tanto las funcionalidades descritas como cuál será el proyecto final completo descrito en la sección ESCALABILIDAD de este proyecto.

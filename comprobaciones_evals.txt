@@ -1,0 +1,57 @@
+--*** COMPROBACIONES ***--
+
+* MODEs (tp_used)
+
+  + Max
+   - Sin e_min_days ni e_min_profit_days
+   - Con e_min_days
+   - Con e_min_profit_days
+   - Con e_min_days y e_min_profit_days
+  
+  + Average
+   - Sin e_min_days ni e_min_profit_days
+   - Con e_min_days
+   - Con e_min_profit_days
+   - Con e_min_days y e_min_profit_days
+
+* Finales de evaluación
+
+  + DDD
+   - Si e_ddd_usd > 0, sl máx. e_ddd_usd.
+   - Si ddd es soft breach, superar el ddd no es suspensión.
+  + MDD
+  + Fin de mes
+    ----- Con e_suscription_type == 'one_time_30_days'
+    - Con e_suscription_type == 'monthly' pero sin cumplir objetivo para renew
+  + Resets
+    - Si coste de reset < coste eval y trades_for_reset <= trades_count
+    - El reset no reinicia trades_for_reset
+  + Renew
+    - Si e_suscription_type == 'monthly' y objetivo para renew cumplido
+    - Reinicia trades_for_reset
+  + Superada
+    - Si balance >= target_eval y trades >= e_min_days y profit_days >= e_min_profit_days
+
+* Combinaciones
+
+  + Si hay varios reset_cost que se utilice el que corresponda (ejemplo E2T GAU50).
+  + Si no hay e_min_days ni e_min_profit_days el Mode average no se ejecuta.
+  + Si no hay resets reset_trades será 0.
+
+
+Condiciones evals
+- Initial balance
+- e_target_usd
+- e_mdd_usd
+- e_mdd_type
+- e_ddd_usd (nullable)
+- e_consistency_pct (nullable)
+- e_min_days (nullable)
+- e_min_profit_days (nullable)
+- e_profit_day_usd (nullable)
+- eval_prices
+- reset_prices (nullable)
+- e_suscription_type
+- activation_fee_usd (nullable)
+- e_tps_usd
+- e_sls_usd
