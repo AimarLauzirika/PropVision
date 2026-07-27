@@ -40,7 +40,8 @@ def main() -> None:
         accounts, connection_status = load_accounts_with_status()
         # print(accounts)
         accounts = [acc for acc in accounts if acc.get("eval1_conditions") is not None]
-        print(accounts)
+        # print(accounts)
+
         company_names = sorted(
             {
                 account.get("company", {}).get("long_name")
@@ -92,10 +93,14 @@ def main() -> None:
             st.warning("No se encontraron cuentas con ese filtro de empresa o texto.")
 
     with st.expander("Parámetros de simulación", expanded=True):
-        num_sims = st.number_input("Número de simulaciones", min_value=1, max_value=500000, value=1000, step=1000)
-        modes = st.multiselect("Mode", ["fixed", "variable"], default=["fixed", "variable"])
-        min_reset = st.number_input("Reset trades mínimo", min_value=0, max_value=20, value=5, step=1)
-        max_reset = st.number_input("Reset trades máximo", min_value=0, max_value=20, value=5, step=1)
+        num_sims = st.number_input("Número de simulaciones", min_value=1, max_value=500000, value=300, step=1000)
+        modes = st.segmented_control("Mode", [*SimulationConfig.modes, "All"], default=["All"])
+        # modes = st.multiselect("Mode", ["fixed", "variable"], default=["fixed", "variable"])
+        if modes == "All": modes = SimulationConfig.modes
+        min_reset = st.number_input("Reset trades mínimo", min_value=min(SimulationConfig().reset_trades), max_value=max(SimulationConfig().reset_trades), value=5, step=1)
+        max_reset = st.number_input("Reset trades máximo", min_value=min(SimulationConfig().reset_trades), max_value=max(SimulationConfig().reset_trades), value=5, step=1)
+        # min_reset = st.number_input("Reset trades mínimo", min_value=0, max_value=20, value=5, step=1)
+        # max_reset = st.number_input("Reset trades máximo", min_value=0, max_value=20, value=5, step=1)
         if min_reset > max_reset:
             st.error("El máximo de reset trades debe ser mayor o igual al mínimo.")
             st.stop()

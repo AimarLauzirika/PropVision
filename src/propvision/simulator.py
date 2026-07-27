@@ -16,12 +16,11 @@ def _int_or_zero(value: Any) -> int:
     except (TypeError, ValueError):
         return 0
 
-
 @dataclass(frozen=True)
 class SimulationConfig:
     num_sims: int = 200000
-    modes: Sequence[str] = ("fixed", "variable")
-    reset_trades: Sequence[int] = tuple(range(0, 16))
+    modes: Sequence[str] = ("Max", "Average")
+    reset_trades: Sequence[int] = tuple(range(5, 20))
     # seed: Optional[int] = None
 
 
@@ -96,9 +95,9 @@ def build_example_context(account: Dict[str, Any], combo: Dict[str, Any]) -> Dic
 
 
 def simulate_example(account: Dict[str, Any], combo: Dict[str, Any], seed: Optional[int] = None) -> List[Dict[str, Any]]:
-    if seed is not None:
-        random.seed(seed)
-        np.random.seed(seed)
+    # if seed is not None:
+    #     random.seed(seed)
+    #     np.random.seed(seed)
 
     trades: List[Dict[str, Any]] = []
     initial_balance = float(account.get("initial_balance", 0.0))

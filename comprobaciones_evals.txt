@@ -26,6 +26,7 @@
   + Resets
     - Si coste de reset < coste eval y trades_for_reset <= trades_count
     - El reset no reinicia trades_for_reset
+    - Si e_suscription_type == 'one_time_lifetime' y reset_cost < eval_cost, los reset se realizarán independientemente de los días que han pasado (ejemplo lucid).
   + Renew
     - Si e_suscription_type == 'monthly' y objetivo para renew cumplido
     - Reinicia trades_for_reset
