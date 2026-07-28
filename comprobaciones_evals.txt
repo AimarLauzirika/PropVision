@@ -24,9 +24,11 @@
     ----- Con e_suscription_type == 'one_time_30_days'
     - Con e_suscription_type == 'monthly' pero sin cumplir objetivo para renew
   + Resets
-    - Si coste de reset < coste eval y trades_for_reset <= trades_count
+    - Si hay varios reset_cost que se utilice el que corresponda (ejemplo E2T GAU50).
+    - Habrá reset si coste de reset < coste eval y trades_for_reset <= trades_count
     - El reset no reinicia trades_for_reset
     - Si e_suscription_type == 'one_time_lifetime' y reset_cost < eval_cost, los reset se realizarán independientemente de los días que han pasado (ejemplo lucid).
+    - Si reset_trades es 0 que no se haga reset en el primer trade (ejemplo TOF-EliteAccess).
   + Renew
     - Si e_suscription_type == 'monthly' y objetivo para renew cumplido
     - Reinicia trades_for_reset
@@ -35,7 +37,6 @@
 
 * Combinaciones
 
-  + Si hay varios reset_cost que se utilice el que corresponda (ejemplo E2T GAU50).
   + Si no hay e_min_days ni e_min_profit_days el Mode average no se ejecuta.
   + Si no hay resets reset_trades será 0.
 

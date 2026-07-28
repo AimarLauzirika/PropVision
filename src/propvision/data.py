@@ -70,8 +70,8 @@ def load_accounts_with_status() -> Tuple[List[Dict[str, Any]], str]:
 
         # Accounts endpoint
         response_accounts = requests.get(
-            # f"{url}/rest/v1/accounts?select=id,name,company_id,initial_balance",
-            f"{url}/rest/v1/accounts?select=id,name,company_id,initial_balance,e1_target_usd,e_mdd_type,a_mdd_usd,e_ddd_usd,e_consistency_pct,e_min_days,e_min_profit_days,a_profit_day_usd,e_suscription_type,activation_fee_usd,e_tps_usd,e_sls_usd,reset_prices,eval_prices,eval1_id",
+            f"{url}/rest/v1/accounts?select=id,name,company_id,initial_balance,eval1_id",
+            # f"{url}/rest/v1/accounts?select=id,name,company_id,initial_balance,e1_target_usd,e_mdd_type,a_mdd_usd,e_ddd_usd,e_consistency_pct,e_min_days,e_min_profit_days,a_profit_day_usd,e_suscription_type,activation_fee_usd,e_tps_usd,e_sls_usd,reset_prices,eval_prices,eval1_id",
             headers={"apikey": key, "Authorization": f"Bearer {key}"},
             timeout=10,
         )
@@ -94,13 +94,14 @@ def load_accounts_with_status() -> Tuple[List[Dict[str, Any]], str]:
         accounts = response_accounts.json()
         for account in accounts:
             company_id = account.get("company_id")
-            company = companies.get(company_id) or {
-                "id": company_id,
-                "short_name": "UNK",
-                "long_name": "Sin empresa",
-            }
-            if "long_name" not in company:
-                company["long_name"] = company.get("short_name") or "Sin empresa"
+            company = companies.get(company_id)
+            # company = companies.get(company_id) or {
+            #     "id": company_id,
+            #     "short_name": "UNK",
+            #     "long_name": "Sin empresa",
+            # }
+            # if "long_name" not in company:
+            #     company["long_name"] = company.get("short_name") or "Sin empresa"
             account["company"] = company
             eval1_id = account.get("eval1_id")
             eval1_conditions = evals.get(eval1_id)
@@ -113,20 +114,20 @@ def load_accounts_with_status() -> Tuple[List[Dict[str, Any]], str]:
         return _mock_accounts(), f"Error inesperado al cargar cuentas de Supabase: {exc}"
 
 
-def load_accounts() -> List[Dict[str, Any]]:
-    accounts, _ = load_accounts_with_status()
-    return accounts
+# def load_accounts() -> List[Dict[str, Any]]:
+#     accounts, _ = load_accounts_with_status()
+#     return accounts
 
 
-def get_account_groups(accounts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    grouped: Dict[str, List[Dict[str, Any]]] = {}
-    for account in accounts:
-        company = account.get("company") or {}
-        company_key = company.get("short_name") or f"C{account.get('company_id', '?')}"
-        grouped.setdefault(company_key, []).append(account)
+# def get_account_groups(accounts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+#     grouped: Dict[str, List[Dict[str, Any]]] = {}
+#     for account in accounts:
+#         company = account.get("company") or {}
+#         company_key = company.get("short_name") or f"C{account.get('company_id', '?')}"
+#         grouped.setdefault(company_key, []).append(account)
 
-    groups = []
-    for key in sorted(grouped):
-        group_accounts = sorted(grouped[key], key=lambda item: item.get("name", ""))
-        groups.append({"company_name": key, "accounts": group_accounts})
-    return groups
+#     groups = []
+#     for key in sorted(grouped):
+#         group_accounts = sorted(grouped[key], key=lambda item: item.get("name", ""))
+#         groups.append({"company_name": key, "accounts": group_accounts})
+#     return groups

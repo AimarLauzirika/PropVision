@@ -52,25 +52,52 @@ def _get_reset_cost(account: Dict[str, Any], price_eval: float, eval_prices: Seq
 
 
 def _build_combinations(account: Dict[str, Any], config: SimulationConfig) -> List[Dict[str, Any]]:
-    eval_prices = _coerce_list(account.get("eval_prices"))
-    if not eval_prices:
-        eval_prices = [account.get("e1_target_usd", 0.0)]
-
+    eval_prices = account['eval1_conditions'].get("eval_prices")
+    reset_prices = account['eval1_conditions'].get("reset_prices")
     combos: List[Dict[str, Any]] = []
-    for price in eval_prices:
+    for price_index, price in enumerate(eval_prices):
+        if reset_prices != None:
+            if len(reset_prices) > 1:
+                reset_price = reset_prices[price_index]
+            elif len(reset_prices) == 1:
+                reset_price = reset_prices[0]
+
         for mode in config.modes:
-            for sl in _coerce_list(account.get("e_sls_usd")):
-                for tp in _coerce_list(account.get("e_tps_usd")):
+            for sl in account["eval1_conditions"].get("e_sls_usd"):
+                for tp in account["eval1_conditions"].get("e_tps_usd"):
                     for reset_trades in config.reset_trades:
-                        combos.append(
-                            {
-                                "price": float(price),
-                                "mode": mode,
-                                "sl": float(sl),
-                                "tp": float(tp),
-                                "reset_trades": int(reset_trades),
-                            }
-                        )
+                        # Si no hay resets reset_trades será 0
+                        if reset_prices == None:
+                            reset_trades = 0
+                        elif reset_price >= price:
+                            reset_trades = 0
+                        combo = {
+                                    "price": float(price),
+                                    "mode": mode,
+                                    "sl": float(sl),
+                                    "tp": float(tp),
+                                    "reset_trades": int(reset_trades),
+                                }
+                        combos.append(combo)
+
+    # Condicionantes:
+        # Si no hay e_min_days ni e_min_profit_days el Mode average no se ejecuta
+    if _int_or_zero(account['eval1_conditions']['e_min_days']) == 0 and _int_or_zero(account['eval1_conditions']['e_min_profit_days']) == 0:
+        combos = [combo for combo in combos if combo['mode'] != 'Average']
+    
+    # Eliminar repetidos
+    lista_unica = []
+    vistos = set()
+    for combo in combos:
+        tupla_hashable = tuple(sorted(combo.items()))
+        
+        if tupla_hashable not in vistos:
+            vistos.add(tupla_hashable)
+            lista_unica.append(combo)
+
+    combos = lista_unica
+    print(f'{len(combos)} combinaciones')
+
     return combos
 
 
@@ -98,6 +125,7 @@ def simulate_example(account: Dict[str, Any], combo: Dict[str, Any], seed: Optio
     # if seed is not None:
     #     random.seed(seed)
     #     np.random.seed(seed)
+    print(account)
 
     trades: List[Dict[str, Any]] = []
     initial_balance = float(account.get("initial_balance", 0.0))
@@ -220,9 +248,9 @@ def simulate_example(account: Dict[str, Any], combo: Dict[str, Any], seed: Optio
                 "days": days,
                 "mdd": mdd,
                 "mdd_trailing": mdd_trailing,
-                # "mdd_used": mdd_used,
+                "mdd_used": mdd_used,
                 "balance": balance,
-                # "profit_remaining": profit_remaining,
+                "profit_remaining": profit_remaining,
                 "tp_used": tp_used,
                 "sl_used": sl_used,
                 "prob_tp": prob_tp,
