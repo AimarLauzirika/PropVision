@@ -10,3 +10,7 @@ ESQUEMA Evaluaciones
   1.2.- Parámetros de simulación
     1.2.1.- config = SimulationConfig(num_sims, modes, reset_Trades). SimulationConfig es una clase ubicada en simulator.py
     1.2.2.- combinations = _build_combinations(selected_accounts[0], config). _build_combinations() viene de simulator.py
+  1.3.- Ejemplo de evaluación
+    1.3.1.- selected_comb = Selecciona combinación (st.selectbox)
+    1.3.2.- data = simulate_eval(account, selected_comb)
+    1.3.3.- 

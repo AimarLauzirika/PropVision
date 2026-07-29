@@ -33,7 +33,7 @@ def _coerce_list(value: Any) -> List[float]:
 
 
 def _get_reset_cost(account: Dict[str, Any], price_eval: float, eval_prices: Sequence[float]) -> Optional[float]:
-    reset_prices = account.get("reset_prices")
+    reset_prices = account['eval1_conditions'].get("reset_prices")
     if reset_prices is None:
         return None
 
@@ -121,50 +121,59 @@ def build_example_context(account: Dict[str, Any], combo: Dict[str, Any]) -> Dic
     }
 
 
-def simulate_example(account: Dict[str, Any], combo: Dict[str, Any], seed: Optional[int] = None) -> List[Dict[str, Any]]:
+def simulate_eval(account: Dict[str, Any], combo: Dict[str, Any], seed: Optional[int] = None) -> List[Dict[str, Any]]:
     # if seed is not None:
     #     random.seed(seed)
     #     np.random.seed(seed)
-    print(account)
 
-    trades: List[Dict[str, Any]] = []
-    initial_balance = float(account.get("initial_balance", 0.0))
-    a_mdd_usd = float(account.get("a_mdd_usd", 0.0))
+    data: Dict = {}
+    trs: List[Dict[str, Any]] = []
+    results: Dict = {}
+    # General conditions
+    initial_balance = float(account.get("initial_balance"))
+    price_eval = float(combo.get("price"))
+    subscription_type = account['eval1_conditions'].get("e_suscription_type")
+    reset_cost = _get_reset_cost(account, price_eval, _coerce_list(account['eval1_conditions'].get("eval_prices")))
+    e_min_days = _int_or_zero(account['eval1_conditions'].get("e_min_days"))
+    e_min_profit_days = _int_or_zero(account['eval1_conditions'].get("e_min_profit_days"))
+    profit_day_usd = float(account['eval1_conditions'].get("a_profit_day_usd", 0.0)) if account['eval1_conditions'].get("a_profit_day_usd") is not None else 0.0
+    activation_cost = float(account['eval1_conditions'].get("activation_fee_usd", 0.0)) if account['eval1_conditions'].get("activation_fee_usd") is not None else 0.0
+    a_mdd_usd = float(account['eval1_conditions'].get("e_mdd_usd"))
+    target_usd = float(account['eval1_conditions'].get("e_target_usd"))
+    target_initial = initial_balance + target_usd
+    initial_pass_prob = a_mdd_usd / (a_mdd_usd + target_usd)
+    # Initial conditions
     mdd = initial_balance - a_mdd_usd
+    mdd_after = mdd
     balance = initial_balance
     balance_after = initial_balance
     peak_balance = balance
-    consistency_pct = account.get("e_consistency_pct")
+    consistency_pct = account['eval1_conditions'].get("e_consistency_pct")
     consistency_pct = 100.0 if consistency_pct is None or consistency_pct == 0 else float(consistency_pct)
-    target_initial = float(account.get("e1_target_usd", 0.0))
-    target_consist = initial_balance + float(combo.get("tp", 0.0)) / (consistency_pct / 100.0) if consistency_pct != 100.0 else initial_balance
-    target_eval = max(target_initial, target_consist)
-    price_eval = float(combo.get("price", 0.0))
-    reset_cost = _get_reset_cost(account, price_eval, _coerce_list(account.get("eval_prices")))
-    commission = max(6.0, max(float(combo.get("tp", 0.0)), float(combo.get("sl", 0.0))) / 500.0 * 6.0)
-    profit_threshold = float(account.get("a_profit_day_usd", 0.0)) if account.get("a_profit_day_usd") is not None else 0.0
-    e_min_days = _int_or_zero(account.get("e_min_days"))
-    e_min_profit_days = _int_or_zero(account.get("e_min_profit_days"))
-    activation_cost = float(account.get("activation_fee_usd", 0.0)) if account.get("activation_fee_usd") is not None else 0.0
-    subscription_type = account.get("e_suscription_type")
-
+    # target_consist = initial_balance + float(combo.get("tp", 0.0)) / (consistency_pct / 100.0) if consistency_pct != 100.0 else initial_balance
+    target_consist = 0
+    general_commission = max(6.0, max(float(combo.get("tp", 0.0)), float(combo.get("sl", 0.0))) / 500.0 * 6.0)
+    target_eval = max(target_initial + general_commission, target_consist + general_commission)
+    profit_remaining = (target_eval + general_commission) - balance
     days = 0
-    trades_count = 0
-    trades_for_reset_count = 0
+    trades = 0
     profits = 0
-    total_cost = 0.0
+    days_for_reset = 0
     resets = 0
     renews = 0
+    total_cost = 0.0
     pending_reset = False
-    last_mdd_after = mdd
+    # last_mdd_after = mdd
+    account_end = False
 
-    for _ in range(20):
+
+    while not account_end:
         days += 1
-        trades_count += 1
-        trades_for_reset_count += 1
+        trades += 1
+        days_for_reset += 1
         balance = balance_after
 
-        if trades_count == 1 or pending_reset:
+        if trades == 1 or pending_reset:
             mdd = initial_balance - a_mdd_usd
         else:
             mdd = last_mdd_after
@@ -172,85 +181,108 @@ def simulate_example(account: Dict[str, Any], combo: Dict[str, Any], seed: Optio
         if pending_reset:
             balance = initial_balance
             peak_balance = balance
-            trades_count = 1
+            trades = 1
             profits = 0
             pending_reset = False
 
-        profit_remaining = target_eval - balance
-        traded_days = f"{trades_count}/{e_min_days}"
 
-        if combo["mode"] == "fixed":
-            tp_used = min(combo["tp"], (target_eval - balance) + commission)
-        else:
-            trades_remaining = max(0, e_min_days - trades_count)
+        profit_remaining = target_eval - balance_after
+        if combo["mode"] == "Max":
+            tp_used = min(combo["tp"], profit_remaining + general_commission)
+        elif combo["mode"] == "Average":
+            trades_remaining = max(0, e_min_days - trades)
+            profits_remaining = max(0, e_min_days - profits)
             tp_used = min(
                 combo["tp"],
-                (profit_remaining / max(1, trades_remaining if trades_remaining > 0 else max(1, e_min_days))) + commission,
+                (profit_remaining / max(1, trades_remaining, profits_remaining)),
             )
-
-        # tp_used = tp_target
         sl_used = max(0.0, min(combo["sl"], balance - mdd))
+        tp_used = round(tp_used,2)
+        sl_used = round(sl_used,2)
+
+        commission = int(max(6.0, max(tp_used, sl_used)) / 500.0 * 6.0)
+        target_consist = max(target_consist, initial_balance + (tp_used / (consistency_pct / 100)) + general_commission)
+        target_eval = max(target_eval, target_consist)
+
         prob_tp = sl_used / (tp_used + sl_used) if (tp_used + sl_used) > 0 else 0.5
         rndm = random.random()
         trade_result = tp_used - commission if rndm < prob_tp else -sl_used - commission
-        mdd_trailing = mdd + max(tp_used, sl_used) * random.uniform(0.1, 0.9) if account.get("e_mdd_type") == "trailing" else 0.0
-        mdd_used = min(max(mdd, mdd_trailing), float(account.get("e_highest_mdd_account", 0.0)))
-        ddd_failed = account.get("e_ddd_usd") is not None and trade_result < -float(account.get("e_ddd_usd", 0.0))
+
+        mdd_trailing = mdd + max(tp_used, sl_used) * random.uniform(0.1, 0.9) if account['eval1_conditions'].get("e_mdd_type") == "trailing" else 0.0
+        mdd_used = min(max(mdd, mdd_trailing), initial_balance)
+        ddd_failed = account['eval1_conditions'].get("e_ddd_usd") is not None and trade_result < -float(account['eval1_conditions'].get("e_ddd_usd"))
         balance_after = balance + trade_result
         peak_balance = max(peak_balance, balance_after)
-        mdd_after = min(max(mdd, peak_balance - a_mdd_usd), float(account.get("e_highest_mdd_account", 0.0)))
-        if account.get("e_mdd_type") == "static":
+        mdd_after = min(max(mdd, peak_balance - a_mdd_usd), initial_balance)
+        if account['eval1_conditions'].get("e_mdd_type") == "static":
             mdd_after = initial_balance - a_mdd_usd
-        # mdd_after = min(mdd_after, float(account.get("e_highest_mdd_account", 0.0)))
+        # mdd_after = min(mdd_after, float(account['eval1_conditions'].get("e_highest_mdd_account", 0.0)))
+        new_pass_prob = (balance_after - mdd_after) / (profit_remaining + (balance_after - mdd_after))
 
-        if ddd_failed or balance_after <= mdd:
-            breached = True
-        else:
-            breached = False
 
-        if trade_result > profit_threshold:
+        if trade_result > profit_day_usd:
             profits += 1
 
-        renewed = False
-        reset = False
         trade_cost = 0.0
 
         if days == 1:
             trade_cost = price_eval
 
-        if subscription_type == "monthly" and days % 20 == 0 and (target_eval - balance) < (balance - mdd):
-            renewed = True
-            renews += 1
-            trade_cost += price_eval
-            trades_for_reset_count = 0
-
-        can_reset = reset_cost is not None and reset_cost < price_eval
-        if can_reset and (balance_after <= mdd or ddd_failed) and trades_for_reset_count <= int(combo["reset_trades"]):
-            reset = True
+        # Reset
+        can_reset = reset_cost is not None and reset_cost < price_eval and days_for_reset <= int(combo["reset_trades"])
+        if can_reset and (balance_after <= mdd or ddd_failed):
             resets += 1
             trade_cost += reset_cost
             pending_reset = True
-            trades_for_reset_count = 0
 
-        trades_for_reset = trades_for_reset_count
-        profit_days = f"{profits}/{e_min_profit_days} (${profit_threshold:.0f})"
-        if profits == 0 and reset:
-            profit_days = f"0/{e_min_profit_days} (${profit_threshold:.0f})"
+        # Renew
+        if subscription_type == "monthly" and days % 20 == 0 and initial_pass_prob < new_pass_prob:
+            renews += 1
+            trade_cost += price_eval
+            days_for_reset = 0
 
-        if balance_after >= target_eval and trades_count >= e_min_days and profits >= e_min_profit_days:
-            if account.get("activation_fee_type") == "always" and activation_cost > 0:
-                trade_cost += activation_cost
+        # profit_days = f"{profits}/{e_min_profit_days} (${profit_day_usd:.0f})"
+        # if profits == 0 and reset:
+        #     profit_days = f"0/{e_min_profit_days} (${profit_day_usd:.0f})"
+
+        # if balance_after >= target_eval and trades >= e_min_days and profits >= e_min_profit_days:
+        #     if account.get("activation_fee_type") == "always" and activation_cost > 0:
+        #         trade_cost += activation_cost
+
+
+        #? Finales de cuenta
+
+        # Eval pass
+        if balance_after >= target_eval and trades >= e_min_days and profits >= e_min_profit_days:
+            account_end = True
+            trade_cost += activation_cost
+
+
+        # MDD
+        if balance_after <= mdd_used and not can_reset:
+            account_end = True
+
+        # Fecha de renew pero sin resultados favorables
+        if subscription_type == "monthly" and days % 20 == 0 and initial_pass_prob > new_pass_prob:
+            account_end = True
+
+
+        # De seguridad
+        if days >= 300:
+            account_end = True
 
         total_cost += trade_cost
 
-        trades.append(
+        trs.append(
             {
                 "days": days,
-                "mdd": mdd,
-                "mdd_trailing": mdd_trailing,
+                # "mdd": mdd,
+                # "mdd_trailing": mdd_trailing,
                 "mdd_used": mdd_used,
                 "balance": balance,
-                "profit_remaining": profit_remaining,
+                # "target_consist": target_consist,
+                # "target_eval": target_eval,
+                # "profit_remaining": profit_remaining,
                 "tp_used": tp_used,
                 "sl_used": sl_used,
                 "prob_tp": prob_tp,
@@ -258,14 +290,15 @@ def simulate_example(account: Dict[str, Any], combo: Dict[str, Any], seed: Optio
                 "trade_result": trade_result,
                 "ddd_failed": ddd_failed,
                 "balance_after": balance_after,
-                "peak_balance": peak_balance,
+                # "peak_balance": peak_balance,
                 "mdd_after": mdd_after,
-                "trades": trades_count,
-                "traded_days": traded_days,
-                "profits": profits,
-                "profit_days": profit_days,
-                "trades_for_reset": trades_for_reset,
+                "traded_days": f"{trades}/{e_min_days}",
+                "profit_days": f"{profits}/{e_min_profit_days} (${profit_day_usd:.0f})",
+                # "days_for_reset": days_for_reset,
+                "can_reset": can_reset,
                 "resets": resets,
+                # "initial_pass_prob": initial_pass_prob,
+                # "new_pass_prob": new_pass_prob,
                 "renews": renews,
                 "cost": trade_cost,
                 "cost_total": total_cost,
@@ -275,13 +308,9 @@ def simulate_example(account: Dict[str, Any], combo: Dict[str, Any], seed: Optio
         balance = balance_after
         last_mdd_after = mdd_after
 
-        if reset:
-            balance = initial_balance
-
-        if reset or renewed:
-            trades_for_reset_count = 0
-
-    return trades
+    data['trades'] = trs
+    data['results']= results
+    return data
 
 
 def simulate_account(account: Dict[str, Any], config: SimulationConfig) -> List[Dict[str, Any]]:

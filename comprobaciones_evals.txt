@@ -35,6 +35,11 @@
   + Superada
     - Si balance >= target_eval y trades >= e_min_days y profit_days >= e_min_profit_days
 
+* Simulaciones
+  + La consistency_target calcular en cada trade y no al inicio de la simulación, ya que con el mode average es posible que no se utilice ninguna vez el tp inicial, y por lo tanto en la realidad el consistency_target debería ser inferior a que si lo calculamos con el tp de la combinación y no con los tp_used.
+  + Las comisiones se calcularán en cada trade, ya que el tp_used y el sl_used pueden variar.
+  
+
 * Combinaciones
 
   + Si no hay e_min_days ni e_min_profit_days el Mode average no se ejecuta.

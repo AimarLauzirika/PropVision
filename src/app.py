@@ -7,7 +7,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from src.propvision.data import _format_account_name, load_accounts_with_status
-from src.propvision.simulator import SimulationConfig, build_example_context, simulate_account, simulate_example, _build_combinations
+from src.propvision.simulator import SimulationConfig, build_example_context, simulate_account, simulate_eval, _build_combinations
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -73,8 +73,10 @@ def main() -> None:
     with col2:
         with st.expander("Parámetros de simulación", expanded=True):
             num_sims = st.number_input("Número de simulaciones", min_value=1, max_value=500000, value=30, step=1000)
-            modes = st.segmented_control("Mode", [*SimulationConfig.modes, "All"], default=["All"])
+            modes = st.segmented_control("Mode", list(SimulationConfig.modes) + ["All"], default=["All"])
             if modes == "All": modes = SimulationConfig.modes
+            else:
+                modes = [modes]
             col21, col22 = st.columns(2)
             with col21:
                 min_reset = st.number_input("Reset trades mínimo", min_value=min(SimulationConfig().reset_trades), max_value=max(SimulationConfig().reset_trades), value=15, step=1)
@@ -138,7 +140,7 @@ def main() -> None:
                 account = selected_accounts[0] if selected_accounts else (filtered_accounts[0] if filtered_accounts else accounts[0])
             seed = int(st.session_state.get("example_seed", 0)) + 1
             st.session_state["example_seed"] = seed
-            trades = simulate_example(account, combo, seed=seed)
+            trades = simulate_eval(account, combo, seed=seed)
             st.session_state["example_trades"] = trades
             st.session_state["example_combo"] = combo
 
@@ -177,10 +179,33 @@ def main() -> None:
             #     account = selected_accounts[0] if selected_accounts else (filtered_accounts[0] if filtered_accounts else accounts[0])
             # seed = int(st.session_state.get("example_seed", 0)) + 1
             # st.session_state["example_seed"] = seed
-            trades = simulate_example(account, selected_comb)
-            # trades = simulate_example(account, selected_comb, seed=seed)
+            data = simulate_eval(account, selected_comb)
+            trades, results = data['trades'], data['results']
+            # trades = simulate_eval(account, selected_comb, seed=seed)
             # st.session_state["example_trades"] = trades
             # st.session_state["example_combo"] = selected_comb
+
+            col1, col2 = st.columns(2)
+            with col1:
+                with st.expander('Condiciones de la cuenta'):
+                    st.markdown(
+                        f"""
+                        <div style="line-height:1.7;">
+                        <strong>Condiciones:</strong> Balance inicial {account['initial_balance']} | MDD {account['eval1_conditions']['e_mdd_usd']} | Tipo MDD {account['eval1_conditions']['e_mdd_type']} | DDD {account['eval1_conditions']['e_ddd_usd']} | Consistencia {account['eval1_conditions']['e_consistency_pct']} | Días mín. {account['eval1_conditions']['e_min_days']} | Días beneficio {account['eval1_conditions']['e_min_profit_days']} | Beneficio mín. {account['eval1_conditions']['e_profit_day_usd']}<br>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+            with col2:
+                with st.expander('Resultados'):
+                    st.markdown(
+                        f"""
+                        <div style="line-height:1.7;">
+                        <strong>Resultados:</strong> Núm. sims. {account['initial_balance']} | MDD {account['eval1_conditions']['e_mdd_usd']} | Tipo MDD {account['eval1_conditions']['e_mdd_type']} | DDD {account['eval1_conditions']['e_ddd_usd']} | Consistencia {account['eval1_conditions']['e_consistency_pct']} | Días mín. {account['eval1_conditions']['e_min_days']} | Días beneficio {account['eval1_conditions']['e_min_profit_days']} | Beneficio mín. {account['eval1_conditions']['e_profit_day_usd']}<br>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
             if trades:
                 st.subheader("Ejemplo de ejecución trade a trade")
@@ -196,7 +221,7 @@ def main() -> None:
                 #     """,
                 #     unsafe_allow_html=True,
                 # )
-                st.dataframe(trades, use_container_width=True)
+                st.dataframe(trades, height=500, use_container_width=True)
 
 if __name__ == "__main__":
     main()

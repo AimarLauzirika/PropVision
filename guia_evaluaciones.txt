@@ -78,8 +78,8 @@ En cada una de las combinaciones se simularán 200000 evaluaciones (cuentas), y 
 - Trades_days: accounts.e_min_days - Trades, mínimo 0. Si accounts.e_min_days == NULL se considerará accounts.e_min_days como 0.
 - Profits: Empieza en 0. Si la evaluación requiere un mínimo de días de beneficio (accounts.e_min_profit_days) se incrementará si el trade actual es mayor que accounts.a_profit_day_usd. Si en el trade anterior se realizó un reset se reseteará a 0.
 - Profit_days: accounts.e_min_profit_days - Profit_days, mínimo 0. Si accounts.e_min_profit_days == NULL se considerará accounts.e_min_profit_days como 0.
-- Trades_for_reset: Con el primer trade empieza en 1 y se incrementará con cada trade. Vuelve al 0 si en el trade anterior se realizó un renew.
-- Resets: El número de resets que se han realizado en la cuenta. Se podrá realizar un reset sólo si el coste de Reset_cost no es NULL y es inferior al precio de la evaluación actual. Se realizará un reset si (Balance <= MDD_used o DDD_exceeded) y Trades_for_reset <= Reset_trades.
+- Days_for_reset: Con el primer trade empieza en 1 y se incrementará con cada trade. Vuelve al 0 si en el trade anterior se realizó un renew.
+- Resets: El número de resets que se han realizado en la cuenta. Se podrá realizar un reset sólo si el coste de Reset_cost no es NULL y es inferior al precio de la evaluación actual. Se realizará un reset si (Balance <= MDD_used o DDD_exceeded) y Days_for_reset <= Reset_trades.
 - Renews: El número de renews que se han realizado en la cuenta. Solo se realizarán renews si accounts.e_suscription_type == 'monthly'. Se realizará un renew cuando Days == 20 y (Target_eval - Balance_after) < (Balance_after - MDD_used). Si Days == 20 y (Target_eval - Balance_after) > (Balance_after - MDD_used) se suspende la evaluación. Si accounts.e_suscription_type == 'one_time_30_days' y Days >= 20, se suspende la evaluación.
 - Cost: Si es el primer trade, el coste sera Price_eval. Si se ha realizado un reset, el coste será Reset_cost. Y si se ha realizado un renew el coste será Price_eval. Si no es ninguno de los anteriores entonces será 0.
 - Total_cost: Será Total_cost del trade anterior + Cost.
