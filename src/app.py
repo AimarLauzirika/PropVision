@@ -185,30 +185,26 @@ def main() -> None:
             # st.session_state["example_trades"] = trades
             # st.session_state["example_combo"] = selected_comb
 
-            col1, col2 = st.columns(2)
-            with col1:
-                with st.expander('Condiciones de la cuenta'):
-                    st.markdown(
-                        f"""
-                        <div style="line-height:1.7;">
-                        <strong>Condiciones:</strong> Balance inicial {account['initial_balance']} | MDD {account['eval1_conditions']['e_mdd_usd']} | Tipo MDD {account['eval1_conditions']['e_mdd_type']} | DDD {account['eval1_conditions']['e_ddd_usd']} | Consistencia {account['eval1_conditions']['e_consistency_pct']} | Días mín. {account['eval1_conditions']['e_min_days']} | Días beneficio {account['eval1_conditions']['e_min_profit_days']} | Beneficio mín. {account['eval1_conditions']['e_profit_day_usd']}<br>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-            with col2:
-                with st.expander('Resultados'):
-                    st.markdown(
-                        f"""
-                        <div style="line-height:1.7;">
-                        <strong>Resultados:</strong> Núm. sims. {account['initial_balance']} | MDD {account['eval1_conditions']['e_mdd_usd']} | Tipo MDD {account['eval1_conditions']['e_mdd_type']} | DDD {account['eval1_conditions']['e_ddd_usd']} | Consistencia {account['eval1_conditions']['e_consistency_pct']} | Días mín. {account['eval1_conditions']['e_min_days']} | Días beneficio {account['eval1_conditions']['e_min_profit_days']} | Beneficio mín. {account['eval1_conditions']['e_profit_day_usd']}<br>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+            with st.expander('Condiciones de la cuenta'):
+                st.markdown(
+                    f"""
+                    <div style="line-height:1.7;">
+                    <strong>Condiciones:</strong> Balance inicial {account['initial_balance']} | MDD {account['eval1_conditions']['e_mdd_usd']} | Tipo MDD {account['eval1_conditions']['e_mdd_type']} | DDD {account['eval1_conditions']['e_ddd_usd']} | Consistencia {account['eval1_conditions']['e_consistency_pct']} | Días mín. {account['eval1_conditions']['e_min_days']} | Días beneficio {account['eval1_conditions']['e_min_profit_days']} | Beneficio mín. {account['eval1_conditions']['e_profit_day_usd']}<br>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-            if trades:
+            if results:
                 st.subheader("Ejemplo de ejecución trade a trade")
+                st.markdown(
+                    f"""
+                    <div style="line-height:1.7;">
+                    <strong>Eval:</strong> {account['eval1_conditions']}<br>
+                    <strong>Resultados:</strong> {results}<br>
+                    """,
+                    unsafe_allow_html=True,
+                )
                 # context = build_example_context(account, selected_comb) if "account" in locals() else build_example_context(selected_accounts[0], selected_comb)
                 # st.markdown(
                 #     f"""
