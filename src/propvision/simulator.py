@@ -76,6 +76,7 @@ def _build_combinations(account: Dict[str, Any], config: SimulationConfig) -> Li
                         # Si no hay resets reset_trades será 0
                         if reset_prices == None:
                             reset_trades = 0
+                            reset_price = 0
                         elif reset_price >= price:
                             reset_trades = 0
                         combo = {
@@ -84,6 +85,7 @@ def _build_combinations(account: Dict[str, Any], config: SimulationConfig) -> Li
                                     "sl": float(sl),
                                     "tp": float(tp),
                                     "reset_trades": int(reset_trades),
+                                    "reset_cost": float(reset_price),
                                 }
                         combos.append(combo)
 
@@ -262,7 +264,7 @@ def simulate_eval(account: Dict[str, Any], combo: Dict[str, Any], seed: Optional
 
         # Reset
         can_reset = False
-        if reset_cost is not None and reset_cost < price_eval:
+        if reset_cost is not None and reset_cost < price_eval and reset_cost > 0:
             if days_for_reset <= int(combo["reset_trades"]) or subscription_type == "one_time_lifetime":
                 can_reset = True
         if can_reset and (balance_after <= mdd_used or ddd_failed):

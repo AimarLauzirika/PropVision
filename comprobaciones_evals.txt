@@ -40,6 +40,7 @@
   + Resets
     - Si hay varios reset_cost que se utilice el que corresponda (ejemplo E2T GAU50).
     - Habrá reset si coste de reset < coste eval y days_for_reset <= trades_count
+    - Si no hay reset_prices, reset_price será 0 pero no contará como coste_reset < coste_eval
     - El reset no reinicia days_for_reset
     - Si e_suscription_type == 'one_time_lifetime' y reset_cost < eval_cost, los reset se realizarán independientemente de los días que han pasado (ejemplo lucid).
     - Si reset_trades es 0 que no se haga reset en el primer trade (ejemplo TOF-EliteAccess).

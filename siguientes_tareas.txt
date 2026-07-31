@@ -77,4 +77,11 @@ VALORACIÓN
 - Entender mejor porque repercutiendo el coste de la activación en la eval genera un rendimiento distinto a repercutirlo en la fondeada.
 - Probar a evaluar cuantas simualando primero una eval y pasar a simular la fondeada y repetirlo 200000 veces. Para eso establecer las mejores combinaciones de evals u fondeadas. Y con estos datos sacaré los ratios de retiros/gastos.
 
-Quiero que la lista de diccionarios final_results se guarde en un fichero csv
+
+
+- Quiero que la lista de diccionarios final_results se guarde en un fichero csv, en la carpeta exports que ya existe. Los ficheros se guardarán en diferentes carpetas según la compañía de la cuenta (account['company']['short_name']), estas carpetas se llamarán con el 'short_name' de la compañía. El fichero se llamará con el nombre de la evaluación (account['eval1_conditions']['name]) seguido de una barra baja, el id de la evaluación (account['eval1_conditions']['id']), otra barra baja y la fecha y hora todo junto (YYYYMMDDHHMM). Ejemplo E2T-GAU50_3_202607311856.csv.
+- Tambien quiero que la lista de diccionarios final_results_with_conditions se guarde en la base de datos de supabase al que la app tiene acceso. 
+- Condicionantes para guardar. Para que estos resultados se guarden, tanto el fichero csv como en la base de datos, se tienen que cumplir con los siguientes criterios:
+  - Número de simulaciones. Un mínimo de 200000 simulaciones, se comprueba con config.num_sims.
+  - Modes 'All'. Es decir que len(config.modes > 1).
+  - reset_trades. El mínimo de config.reset_trades tendrá que ser 0 y el máximo tiene que ser 20.

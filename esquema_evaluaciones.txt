@@ -26,4 +26,36 @@ ESQUEMA Evaluaciones
     1.4.2.- best_results -> de final_results, sacar los mejores resultados por precio, es decir, los que tienen el fund_cost más bajo
     1.4.3.- Guardar resultados.
       1.4.3.1.- Fichero csv de los resultados de todas las combinaciones
-      1.4.3.2.- Los mejores resultados guardar en base de datos
+      1.4.3.2.- Los mejores resultados guardar en base de datos:
+        + eval_id
+        + Combinación:
+          - price
+          - mode
+          - tp
+          - sl
+          - reset_trades
+          - reset_cost
+        + Resultados:
+          - total_sims
+          - total_evals
+          - total_resets
+          - total_renews
+          - total_passed
+          - total_cost
+          - sim_days_avg
+          - fund_cost
+        + Eval conditions_
+         - e_target_usd
+         - e_mdd_usd
+         - e_mdd_type
+         - e_ddd_usd
+         - e_consistency_pct
+         - e_min_days
+         - e_min_profit_days
+         - e_profit_day_usd
+         - eval_prices
+         - reset_prices
+         - e_suscription_type
+         - activation_fee_usd
+         - e_tps_usd
+         - e_sls_usd

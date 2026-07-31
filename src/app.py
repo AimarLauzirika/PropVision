@@ -7,7 +7,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from src.propvision.data import _format_account_name, load_accounts_with_status
-from src.propvision.simulator import SimulationConfig, build_example_context, simulate_eval, _build_combinations
+from src.propvision.simulator import SimulationConfig, build_example_context, simulate_eval, _build_combinations, _get_reset_cost
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -217,6 +217,8 @@ def main() -> None:
             and not (d["price"] in seen or seen.add(d["price"]))
         ]
 
+
+
         st.markdown(
             f"""
             <div style="line-height:1.7;">
@@ -237,6 +239,18 @@ def main() -> None:
         st.dataframe(final_results, width='stretch')
 
         #? GUARDAR RESULTADOS
+
+        final_results_with_conditions = []
+        for res in best_results:
+            final_results_with_conditions.append(res | account['eval1_conditions'])
+        # Normalizar resultados
+        for res in final_results_with_conditions:
+            res["eval_id"] = res.pop("id")
+            if res["reset_cost"] == 0:
+                res["reset_cost"] = None
+        # final_results_with_conditions = final_results | account['eval1_conditions']
+        st.dataframe(final_results_with_conditions, width='stretch')
+        
 
         # Fichero csv para todas las combinaciones (final_results)
 
