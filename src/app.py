@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Dict, List
+
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
 
 from src.propvision.data import _format_account_name, load_accounts_with_status
-from src.propvision.simulator import SimulationConfig, build_example_context, simulate_eval, _build_combinations, _get_reset_cost
+from src.propvision.simulator import SimulationConfig, build_example_context, simulate_eval, _build_combinations, _get_reset_cost, _should_save_results, _save_final_results_csv, _insert_best_results_to_supabase
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -240,19 +241,34 @@ def main() -> None:
 
         #? GUARDAR RESULTADOS
 
-        final_results_with_conditions = []
+        best_results_with_conditions = []
         for res in best_results:
-            final_results_with_conditions.append(res | account['eval1_conditions'])
+            best_results_with_conditions.append(res | account['eval1_conditions'])
         # Normalizar resultados
-        for res in final_results_with_conditions:
+        for res in best_results_with_conditions:
             res["eval_id"] = res.pop("id")
+            res.pop("name")
+            res["sl"] = int(res["sl"])
+            res["tp"] = int(res["tp"])
             if res["reset_cost"] == 0:
                 res["reset_cost"] = None
-        # final_results_with_conditions = final_results | account['eval1_conditions']
-        st.dataframe(final_results_with_conditions, width='stretch')
+        # best_results_with_conditions = final_results | account['eval1_conditions']
+        st.dataframe(best_results_with_conditions, width='stretch')
         
 
-        # Fichero csv para todas las combinaciones (final_results)
+        # ...existing code...
+        if _should_save_results(config):
+            csv_path = _save_final_results_csv(final_results, account)
+            st.write(f"Resultados exportados a CSV: {csv_path}")
+
+            try:
+                supabase_response = _insert_best_results_to_supabase(best_results_with_conditions)
+                st.write("Resultados guardados en Supabase.")
+                st.write(supabase_response)
+            except Exception as exc:
+                st.warning(f"No se pudo guardar en Supabase: {exc}")
+        else:
+            st.write("No se cumplen las condiciones de guardado: num_sims >= 200000, modos > 1 y reset_trades desde 0 hasta 20.")
 
 if __name__ == "__main__":
     main()

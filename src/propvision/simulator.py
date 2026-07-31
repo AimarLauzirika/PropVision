@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import math
+import re
+from pathlib import Path
+from datetime import datetime
+import csv
 import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-
+from .db import supabase
 import numpy as np
 
 
@@ -500,3 +504,49 @@ def simulate_eval(account: Dict[str, Any], combo: Dict[str, Any], seed: Optional
 #             }
 #         )
 #     return results
+
+
+def _should_save_results(config) -> bool:
+    # if getattr(config, "num_sims", 0) < 200_000:
+    if config.num_sims < 2:
+        return False
+    # modes = _normalize_list(getattr(config, "modes", []))
+    # if len(modes) <= 1:
+    if len(config.modes) <= 1:
+        return False
+    # reset_trades = _normalize_list(getattr(config, "reset_trades", []))
+    if not list(config.reset_trades):
+        return False
+    return min(config.reset_trades) == 0 and max(config.reset_trades) == 20
+
+def _sanitize_filename(value: str) -> str:
+    text = str(value or "").strip()
+    return re.sub(r"[^\w\-]+", "_", text)
+
+def _save_final_results_csv(final_results, account):
+    exports_root = Path(__file__).resolve().parent / "exports"
+    company_short = _sanitize_filename(account.get("company", {}).get("short_name", "unknown"))
+    eval_name = _sanitize_filename(account.get("eval1_conditions", {}).get("name", "eval"))
+    eval_id = account.get("eval1_conditions", {}).get("id", "unknown")
+    timestamp = datetime.now().strftime("%Y%m%d%H%M")
+
+    folder = exports_root / company_short
+    folder.mkdir(parents=True, exist_ok=True)
+
+    file_name = f"{eval_name}_{eval_id}_{timestamp}.csv"
+    file_path = folder / file_name
+
+    if not final_results:
+        return file_path
+
+    with file_path.open("w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=list(final_results[0].keys()))
+        writer.writeheader()
+        writer.writerows(final_results)
+
+    return file_path
+
+def _insert_best_results_to_supabase(best_results_with_conditions):
+    if not best_results_with_conditions:
+        return None
+    return supabase.table("eval_sim_results").insert(best_results_with_conditions).execute()
