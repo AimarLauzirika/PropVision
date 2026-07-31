@@ -7,7 +7,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from src.propvision.data import _format_account_name, load_accounts_with_status
-from src.propvision.simulator import SimulationConfig, build_example_context, simulate_account, simulate_eval, _build_combinations
+from src.propvision.simulator import SimulationConfig, build_example_context, simulate_eval, _build_combinations
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -112,55 +112,6 @@ def main() -> None:
                 # st.session_state["account_name"] = ", ".join(_format_account_name(account) for account in selected_accounts)
                 # st.session_state["selected_combo"] = None
 
-    if "results" in st.session_state:
-        st.subheader(f"Resultados para {st.session_state['account_name']}")
-        results = st.session_state["results"]
-        df = [
-            {
-                **row,
-                "cost_fund": f"{row['cost_fund']:.2f}",
-                "prob_pass": f"{row['prob_pass']:.2%}",
-            }
-            for row in results
-        ]
-        st.dataframe(df, use_container_width=True)
-
-        best = min(results, key=lambda row: row["cost_fund"])
-        st.success(f"Combinación óptima: Price {best['price']} | Mode {best['mode']} | TP {best['tp']} | SL {best['sl']} | Reset {best['reset_trades']} | Cuenta {best['account_name']} | Coste fundado {best['cost_fund']:.2f}")
-
-        selected_index = st.selectbox(
-            "Selecciona una combinación para ver un ejemplo",
-            options=range(len(results)),
-            format_func=lambda idx: f"Price {results[idx]['price']} | Mode {results[idx]['mode']} | TP {results[idx]['tp']} | SL {results[idx]['sl']} | Reset {results[idx]['reset_trades']}",
-        )
-        if st.button("Generar nuevo ejemplo"):
-            combo = results[selected_index]
-            account = next((account for account in selected_accounts if _format_account_name(account) == combo.get("account_name", "")), None)
-            if account is None:
-                account = selected_accounts[0] if selected_accounts else (filtered_accounts[0] if filtered_accounts else accounts[0])
-            seed = int(st.session_state.get("example_seed", 0)) + 1
-            st.session_state["example_seed"] = seed
-            trades = simulate_eval(account, combo, seed=seed)
-            st.session_state["example_trades"] = trades
-            st.session_state["example_combo"] = combo
-
-        if "example_trades" in st.session_state:
-            st.subheader("Ejemplo de ejecución trade a trade")
-            combo = st.session_state["example_combo"]
-            context = build_example_context(account, combo) if "account" in locals() else build_example_context(selected_accounts[0], combo)
-            st.markdown(
-                f"""
-                <div style="line-height:1.7;">
-                <strong>Cuenta:</strong> {combo.get('account_name', st.session_state['account_name'])}<br>
-                <strong>Configuración:</strong> Price {combo['price']} | Mode {combo['mode']} | TP {combo['tp']} | SL {combo['sl']} | Reset {combo['reset_trades']}<br>
-                <strong>Parámetros por combinación:</strong> Price eval {context['price_eval']} | Reset cost {context['reset_cost']} | Comisión {context['commission']:.0f} | Objetivo inicial {context['target_initial']:.0f} | Objetivo consistencia {context['target_consist']:.0f} | Objetivo evaluación {context['target_eval']:.0f} | Coste activación {context['activation_cost']:.0f}<br>
-                <strong>Resultados:</strong> Probabilidad de pasar {combo['prob_pass']:.2%} | Coste fundado {combo['cost_fund']:.2f}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.dataframe(st.session_state["example_trades"], use_container_width=True)
-
     with st.expander('Ejemplo de evaluación', expanded=True):
         if len(selected_accounts) != 1:
             st.warning('Selecciona sólo una cuenta.')
@@ -171,9 +122,9 @@ def main() -> None:
                     options=combinations,
                     format_func=lambda comb: f"Price {comb['price']} | Mode {comb['mode']} | TP {comb['tp']} | SL {comb['sl']} | Reset {comb['reset_trades']}",
                 )
-        print(f'selected_comb: {selected_comb}')
 
         if st.button("Generar nuevo ejemplo"):
+            print(f'selected_comb: {selected_comb}')
             # account = next((account for account in selected_accounts if _format_account_name(account) == selected_comb.get("account_name", "")), None)
             # if account is None:
             #     account = selected_accounts[0] if selected_accounts else (filtered_accounts[0] if filtered_accounts else accounts[0])
@@ -205,19 +156,89 @@ def main() -> None:
                     """,
                     unsafe_allow_html=True,
                 )
-                # context = build_example_context(account, selected_comb) if "account" in locals() else build_example_context(selected_accounts[0], selected_comb)
-                # st.markdown(
-                #     f"""
-                #     <div style="line-height:1.7;">
-                #     <strong>Cuenta:</strong> {selected_comb.get('account_name', st.session_state['account_name'])}<br>
-                #     <strong>Configuración:</strong> Price {selected_comb['price']} | Mode {selected_comb['mode']} | TP {selected_comb['tp']} | SL {selected_comb['sl']} | Reset {selected_comb['reset_trades']}<br>
-                #     <strong>Parámetros por combinación:</strong> Price eval {context['price_eval']} | Reset cost {context['reset_cost']} | Comisión {context['commission']:.0f} | Objetivo inicial {context['target_initial']:.0f} | Objetivo consistencia {context['target_consist']:.0f} | Objetivo evaluación {context['target_eval']:.0f} | Coste activación {context['activation_cost']:.0f}<br>
-                #     <strong>Resultados:</strong> Probabilidad de pasar {selected_comb['prob_pass']:.2%} | Coste fundado {selected_comb['cost_fund']:.2f}
-                #     </div>
-                #     """,
-                #     unsafe_allow_html=True,
-                # )
-                st.dataframe(trades, height=500, use_container_width=True)
+                st.dataframe(trades, height=500, width='stretch')
+
+
+    with st.expander(f"Simulación de Montecarlo", expanded=True):
+
+        if st.button("Empezar Montecarlo"):
+            final_results = []
+            # print(f'combinations: {combinations}')
+            for comb in combinations:
+                combination_results = {
+                    'total_sims': 0,
+                    'total_evals': 0,
+                    'total_resets': 0,
+                    'total_renews': 0,
+                    'total_passed': 0,
+                    'total_cost': 0,
+                    'sim_days_avg': 0,
+                }
+                comb_all_results = []
+                for i in range(config.num_sims):
+                    account_data = simulate_eval(account, comb)
+                    account_results = account_data['results']
+                    if account_results['num_evals'] == 0:
+                        continue
+                    # print(f'account_results: {account_results}')
+                    combination_results['total_sims'] += 1
+                    combination_results['total_evals'] += account_results['num_evals']
+                    combination_results['total_resets'] += account_results['resets']
+                    combination_results['total_renews'] += account_results['renews']
+                    combination_results['total_passed'] += account_results['passed']
+                    combination_results['total_cost'] += account_results['cost']
+                    comb_all_results.append(account_results)
+                # print(f'comb_all_results: {comb_all_results}')
+                if combination_results['total_evals'] == 0:
+                    continue
+                combination_results['fund_cost'] = round(combination_results['total_cost'] / combination_results['total_passed'], 2) if combination_results['total_passed'] > 0 else 0
+                combination_results['sim_days_avg'] = round(sum(d["sim_days"] for d in comb_all_results) / len(comb_all_results), 1) if len(comb_all_results) else 0
+                combination_results = combination_results | comb
+                # combination_results['reset_trades'] = comb['reset_trades']
+                # combination_results = combination_results | config.__dict__ | comb
+                # combination_results.pop('num_sims')
+                # combination_results.pop('modes')
+                final_results.append(combination_results)
+                # print(f'combination_results: {combination_results}')
+
+        #? Mejores resultados para cada precio
+        
+        # Mínimo fund_cost por price
+        min_cost = {}
+        for d in final_results:
+            price = d["price"]
+            min_cost[price] = min(min_cost.get(price, float("inf")), d["fund_cost"])
+
+        # Filtrar y eliminar duplicados por price
+        seen = set()
+        best_results = [
+            d for d in final_results
+            if d["fund_cost"] == min_cost[d["price"]]
+            and not (d["price"] in seen or seen.add(d["price"]))
+        ]
+
+        st.markdown(
+            f"""
+            <div style="line-height:1.7;">
+            <strong>Mejores resultados por precio</strong><br>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.dataframe(best_results, width='stretch')
+
+        # Todas las combinaciones
+        st.markdown(
+            f"""
+            <div style="line-height:1.7;">
+            <strong>Todas las combinaciones:</strong> {len(final_results)}<br>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.dataframe(final_results, width='stretch')
+
+        #? GUARDAR RESULTADOS
+
+        # Fichero csv para todas las combinaciones (final_results)
 
 if __name__ == "__main__":
     main()

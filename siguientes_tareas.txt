@@ -77,4 +77,4 @@ VALORACIÓN
 - Entender mejor porque repercutiendo el coste de la activación en la eval genera un rendimiento distinto a repercutirlo en la fondeada.
 - Probar a evaluar cuantas simualando primero una eval y pasar a simular la fondeada y repetirlo 200000 veces. Para eso establecer las mejores combinaciones de evals u fondeadas. Y con estos datos sacaré los ratios de retiros/gastos.
 
-
+Quiero que la lista de diccionarios final_results se guarde en un fichero csv

@@ -12,5 +12,18 @@ ESQUEMA Evaluaciones
     1.2.2.- combinations = _build_combinations(selected_accounts[0], config). _build_combinations() viene de simulator.py
   1.3.- Ejemplo de evaluación
     1.3.1.- selected_comb = Selecciona combinación (st.selectbox)
-    1.3.2.- data = simulate_eval(account, selected_comb)
-    1.3.3.- 
+    1.3.2.- data = simulate_eval(account, selected_comb) -> data['trades'] y data['results']
+    1.3.3.- data['results'] = {
+      - num_evals: num_sims + resets
+      - num_resets
+      - num_renews
+      - passed: 1 si se ha superado
+      - cost: coste total de la cuenta, incluyendo el coste de activación
+      - sim_days: days
+    }
+  1.4.- simulación de Montecarlo
+    1.4.1.- final_results -> iterar simulate_eval() y generar resultados de Montecarlo (final_results, lo resultados de cada combinación)
+    1.4.2.- best_results -> de final_results, sacar los mejores resultados por precio, es decir, los que tienen el fund_cost más bajo
+    1.4.3.- Guardar resultados.
+      1.4.3.1.- Fichero csv de los resultados de todas las combinaciones
+      1.4.3.2.- Los mejores resultados guardar en base de datos

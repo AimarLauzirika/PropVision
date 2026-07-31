@@ -354,147 +354,147 @@ def simulate_eval(account: Dict[str, Any], combo: Dict[str, Any], seed: Optional
     return data
 
 
-def simulate_account(account: Dict[str, Any], config: SimulationConfig) -> List[Dict[str, Any]]:
-    # if config.seed is not None:
-    #     random.seed(config.seed)
-    #     np.random.seed(config.seed)
+# def simulate_account(account: Dict[str, Any], config: SimulationConfig) -> List[Dict[str, Any]]:
+#     # if config.seed is not None:
+#     #     random.seed(config.seed)
+#     #     np.random.seed(config.seed)
 
-    combos = _build_combinations(account, config)
-    results: List[Dict[str, Any]] = []
-    consistency_pct = account.get("e_consistency_pct")
-    consistency_pct = 100.0 if consistency_pct is None or consistency_pct == 0 else float(consistency_pct)
+#     combos = _build_combinations(account, config)
+#     results: List[Dict[str, Any]] = []
+#     consistency_pct = account.get("e_consistency_pct")
+#     consistency_pct = 100.0 if consistency_pct is None or consistency_pct == 0 else float(consistency_pct)
 
-    for combo in combos:
-        num_sims = int(config.num_sims)
-        num_passed = 0
-        num_resets = 0
-        num_renews = 0
-        total_cost = 0.0
-        total_trades = 0
-        breached_streak = 0
-        max_breached_streak = 0
-        cost_streak = 0.0
-        max_cost_streak = 0.0
+#     for combo in combos:
+#         num_sims = int(config.num_sims)
+#         num_passed = 0
+#         num_resets = 0
+#         num_renews = 0
+#         total_cost = 0.0
+#         total_trades = 0
+#         breached_streak = 0
+#         max_breached_streak = 0
+#         cost_streak = 0.0
+#         max_cost_streak = 0.0
 
-        for _ in range(num_sims):
-            balance = float(account.get("initial_balance", 0.0))
-            peak_balance = balance
-            mdd = float(account.get("initial_balance", 0.0)) - float(account.get("e_mdd_usd", 0.0))
-            mdd_used = mdd
-            days = 0
-            trades = 0
-            profit_days = 0
-            total_cost_eval = 0.0
-            passed = False
-            breached = False
-            reset_counter = 0
-            renew_counter = 0
-            trade_count = 0
-            pending_reset = False
+#         for _ in range(num_sims):
+#             balance = float(account.get("initial_balance", 0.0))
+#             peak_balance = balance
+#             mdd = float(account.get("initial_balance", 0.0)) - float(account.get("e_mdd_usd", 0.0))
+#             mdd_used = mdd
+#             days = 0
+#             trades = 0
+#             profit_days = 0
+#             total_cost_eval = 0.0
+#             passed = False
+#             breached = False
+#             reset_counter = 0
+#             renew_counter = 0
+#             trade_count = 0
+#             pending_reset = False
 
-            for _ in range(200):
-                days += 1
-                trades += 1
-                trade_count += 1
+#             for _ in range(200):
+#                 days += 1
+#                 trades += 1
+#                 trade_count += 1
 
-                if trade_count == 1 or pending_reset:
-                    balance = float(account.get("initial_balance", 0.0))
-                    pending_reset = False
-                else:
-                    balance = balance
+#                 if trade_count == 1 or pending_reset:
+#                     balance = float(account.get("initial_balance", 0.0))
+#                     pending_reset = False
+#                 else:
+#                     balance = balance
 
-                target_eval = max(
-                    float(account.get("e1_target_usd", 0.0)),
-                    float(account.get("initial_balance", 0.0)) + combo["tp"] / (consistency_pct / 100.0)
-                    if consistency_pct is not None and consistency_pct != 100
-                    else 0.0,
-                )
-                target_eval = max(float(account.get("e1_target_usd", 0.0)), target_eval)
+#                 target_eval = max(
+#                     float(account.get("e1_target_usd", 0.0)),
+#                     float(account.get("initial_balance", 0.0)) + combo["tp"] / (consistency_pct / 100.0)
+#                     if consistency_pct is not None and consistency_pct != 100
+#                     else 0.0,
+#                 )
+#                 target_eval = max(float(account.get("e1_target_usd", 0.0)), target_eval)
 
-                profit_remaining = target_eval - balance
-                trades_remaining = max(0, _float_or_zero(account.get("e_min_days")) - trades)
-                profit_days_remaining = max(0, _float_or_zero(account.get("e_min_profit_days")) - profit_days)
+#                 profit_remaining = target_eval - balance
+#                 trades_remaining = max(0, _float_or_zero(account.get("e_min_days")) - trades)
+#                 profit_days_remaining = max(0, _float_or_zero(account.get("e_min_profit_days")) - profit_days)
 
-                if account.get("e_mdd_type") == "trailing":
-                    mdd_trailing = mdd + combo["tp"] * random.uniform(0.2, 0.5)
-                else:
-                    mdd_trailing = 0.0
-                mdd_used = max(mdd, mdd_trailing)
+#                 if account.get("e_mdd_type") == "trailing":
+#                     mdd_trailing = mdd + combo["tp"] * random.uniform(0.2, 0.5)
+#                 else:
+#                     mdd_trailing = 0.0
+#                 mdd_used = max(mdd, mdd_trailing)
 
-                if combo["mode"] == "fixed":
-                    tp_used = min(combo["tp"], (target_eval - balance) + max(6.0, max(combo["tp"], combo["sl"]) / 500.0 * 6.0))
-                else:
-                    tp_used = min(
-                        combo["tp"],
-                        (profit_remaining / max(1, trades_remaining if trades_remaining > 0 else _float_or_zero(account.get("e_min_days")))) + max(6.0, max(combo["tp"], combo["sl"]) / 500.0 * 6.0),
-                    )
+#                 if combo["mode"] == "fixed":
+#                     tp_used = min(combo["tp"], (target_eval - balance) + max(6.0, max(combo["tp"], combo["sl"]) / 500.0 * 6.0))
+#                 else:
+#                     tp_used = min(
+#                         combo["tp"],
+#                         (profit_remaining / max(1, trades_remaining if trades_remaining > 0 else _float_or_zero(account.get("e_min_days")))) + max(6.0, max(combo["tp"], combo["sl"]) / 500.0 * 6.0),
+#                     )
 
-                sl_used = min(combo["sl"], balance - mdd_used)
-                prob_tp = sl_used / (tp_used + sl_used) if (tp_used + sl_used) > 0 else 0.5
-                rndm = random.random()
-                if rndm < prob_tp:
-                    trade_result = tp_used
-                else:
-                    trade_result = -sl_used
+#                 sl_used = min(combo["sl"], balance - mdd_used)
+#                 prob_tp = sl_used / (tp_used + sl_used) if (tp_used + sl_used) > 0 else 0.5
+#                 rndm = random.random()
+#                 if rndm < prob_tp:
+#                     trade_result = tp_used
+#                 else:
+#                     trade_result = -sl_used
 
-                balance_after = balance + trade_result
-                peak_balance = max(peak_balance, balance_after)
-                mdd_after = max(mdd_used, peak_balance - float(account.get("e_mdd_usd", 0.0)))
-                if account.get("e_mdd_type") == "static":
-                    mdd_after = float(account.get("initial_balance", 0.0)) - float(account.get("e_mdd_usd", 0.0))
-                mdd_after = min(mdd_after, float(account.get("e_highest_mdd_account", 0.0)))
+#                 balance_after = balance + trade_result
+#                 peak_balance = max(peak_balance, balance_after)
+#                 mdd_after = max(mdd_used, peak_balance - float(account.get("e_mdd_usd", 0.0)))
+#                 if account.get("e_mdd_type") == "static":
+#                     mdd_after = float(account.get("initial_balance", 0.0)) - float(account.get("e_mdd_usd", 0.0))
+#                 mdd_after = min(mdd_after, float(account.get("e_highest_mdd_account", 0.0)))
 
-                if balance_after <= mdd_used:
-                    breached = True
-                    break
+#                 if balance_after <= mdd_used:
+#                     breached = True
+#                     break
 
-                if account.get("e_ddd_usd") is not None and trade_result < -float(account.get("e_ddd_usd", 0.0)):
-                    breached = True
-                    break
+#                 if account.get("e_ddd_usd") is not None and trade_result < -float(account.get("e_ddd_usd", 0.0)):
+#                     breached = True
+#                     break
 
-                if account.get("e_suscription_type") == "one_time_30_days" and days >= 20:
-                    breached = True
-                    break
+#                 if account.get("e_suscription_type") == "one_time_30_days" and days >= 20:
+#                     breached = True
+#                     break
 
-                if days == 20 and (target_eval - balance_after) > (balance_after - mdd_used):
-                    breached = True
-                    break
+#                 if days == 20 and (target_eval - balance_after) > (balance_after - mdd_used):
+#                     breached = True
+#                     break
 
-                if balance_after >= target_eval and trades_remaining == 0 and profit_days_remaining == 0:
-                    passed = True
-                    break
+#                 if balance_after >= target_eval and trades_remaining == 0 and profit_days_remaining == 0:
+#                     passed = True
+#                     break
 
-            if passed:
-                num_passed += 1
-                max_breached_streak = 0 if max_breached_streak == 0 else max_breached_streak
-            else:
-                breached_streak += 1
-                max_breached_streak = max(max_breached_streak, breached_streak)
+#             if passed:
+#                 num_passed += 1
+#                 max_breached_streak = 0 if max_breached_streak == 0 else max_breached_streak
+#             else:
+#                 breached_streak += 1
+#                 max_breached_streak = max(max_breached_streak, breached_streak)
 
-            total_trades += trade_count
-            total_cost += 0.0
-            num_resets += 0
-            num_renews += 0
+#             total_trades += trade_count
+#             total_cost += 0.0
+#             num_resets += 0
+#             num_renews += 0
 
-        results.append(
-            {
-                "price": combo["price"],
-                "mode": combo["mode"],
-                "reset_trades": combo["reset_trades"],
-                "tp": combo["tp"],
-                "sl": combo["sl"],
-                "num_sims": num_sims,
-                "num_evals": num_sims + num_resets,
-                "num_passed": num_passed,
-                "prob_pass": num_passed / num_sims if num_sims else 0.0,
-                "num_resets": num_resets,
-                "num_renews": num_renews,
-                "cost_total": total_cost,
-                "cost_pass": total_cost / num_passed if num_passed else float("inf"),
-                "cost_fund": total_cost + float(account.get("activation_fee_usd", 0.0)) if account.get("activation_fee_type") == "always" else total_cost,
-                "trades_avg": total_trades / num_sims if num_sims else 0.0,
-                "breached_streak": max_breached_streak,
-                "cost_streak": max_cost_streak,
-            }
-        )
-    return results
+#         results.append(
+#             {
+#                 "price": combo["price"],
+#                 "mode": combo["mode"],
+#                 "reset_trades": combo["reset_trades"],
+#                 "tp": combo["tp"],
+#                 "sl": combo["sl"],
+#                 "num_sims": num_sims,
+#                 "num_evals": num_sims + num_resets,
+#                 "num_passed": num_passed,
+#                 "prob_pass": num_passed / num_sims if num_sims else 0.0,
+#                 "num_resets": num_resets,
+#                 "num_renews": num_renews,
+#                 "cost_total": total_cost,
+#                 "cost_pass": total_cost / num_passed if num_passed else float("inf"),
+#                 "cost_fund": total_cost + float(account.get("activation_fee_usd", 0.0)) if account.get("activation_fee_type") == "always" else total_cost,
+#                 "trades_avg": total_trades / num_sims if num_sims else 0.0,
+#                 "breached_streak": max_breached_streak,
+#                 "cost_streak": max_cost_streak,
+#             }
+#         )
+#     return results
