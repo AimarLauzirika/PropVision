@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import math
+import ast
 import re
 from pathlib import Path
-from datetime import datetime
 import csv
 import random
 from dataclasses import dataclass
@@ -77,6 +76,9 @@ def _build_combinations(account: Dict[str, Any], config: SimulationConfig) -> Li
             for sl in account["eval1_conditions"].get("e_sls_usd"):
                 for tp in account["eval1_conditions"].get("e_tps_usd"):
                     for reset_trades in config.reset_trades:
+                        # Sólo pares
+                        if not reset_trades % 2 == 0:
+                            continue
                         # Si no hay resets reset_trades será 0
                         if reset_prices == None:
                             reset_trades = 0
@@ -360,151 +362,6 @@ def simulate_eval(account: Dict[str, Any], combo: Dict[str, Any], seed: Optional
     return data
 
 
-# def simulate_account(account: Dict[str, Any], config: SimulationConfig) -> List[Dict[str, Any]]:
-#     # if config.seed is not None:
-#     #     random.seed(config.seed)
-#     #     np.random.seed(config.seed)
-
-#     combos = _build_combinations(account, config)
-#     results: List[Dict[str, Any]] = []
-#     consistency_pct = account.get("e_consistency_pct")
-#     consistency_pct = 100.0 if consistency_pct is None or consistency_pct == 0 else float(consistency_pct)
-
-#     for combo in combos:
-#         num_sims = int(config.num_sims)
-#         num_passed = 0
-#         num_resets = 0
-#         num_renews = 0
-#         total_cost = 0.0
-#         total_trades = 0
-#         breached_streak = 0
-#         max_breached_streak = 0
-#         cost_streak = 0.0
-#         max_cost_streak = 0.0
-
-#         for _ in range(num_sims):
-#             balance = float(account.get("initial_balance", 0.0))
-#             peak_balance = balance
-#             mdd = float(account.get("initial_balance", 0.0)) - float(account.get("e_mdd_usd", 0.0))
-#             mdd_used = mdd
-#             days = 0
-#             trades = 0
-#             profit_days = 0
-#             total_cost_eval = 0.0
-#             passed = False
-#             breached = False
-#             reset_counter = 0
-#             renew_counter = 0
-#             trade_count = 0
-#             pending_reset = False
-
-#             for _ in range(200):
-#                 days += 1
-#                 trades += 1
-#                 trade_count += 1
-
-#                 if trade_count == 1 or pending_reset:
-#                     balance = float(account.get("initial_balance", 0.0))
-#                     pending_reset = False
-#                 else:
-#                     balance = balance
-
-#                 target_eval = max(
-#                     float(account.get("e1_target_usd", 0.0)),
-#                     float(account.get("initial_balance", 0.0)) + combo["tp"] / (consistency_pct / 100.0)
-#                     if consistency_pct is not None and consistency_pct != 100
-#                     else 0.0,
-#                 )
-#                 target_eval = max(float(account.get("e1_target_usd", 0.0)), target_eval)
-
-#                 profit_remaining = target_eval - balance
-#                 trades_remaining = max(0, _float_or_zero(account.get("e_min_days")) - trades)
-#                 profit_days_remaining = max(0, _float_or_zero(account.get("e_min_profit_days")) - profit_days)
-
-#                 if account.get("e_mdd_type") == "trailing":
-#                     mdd_trailing = mdd + combo["tp"] * random.uniform(0.2, 0.5)
-#                 else:
-#                     mdd_trailing = 0.0
-#                 mdd_used = max(mdd, mdd_trailing)
-
-#                 if combo["mode"] == "fixed":
-#                     tp_used = min(combo["tp"], (target_eval - balance) + max(6.0, max(combo["tp"], combo["sl"]) / 500.0 * 6.0))
-#                 else:
-#                     tp_used = min(
-#                         combo["tp"],
-#                         (profit_remaining / max(1, trades_remaining if trades_remaining > 0 else _float_or_zero(account.get("e_min_days")))) + max(6.0, max(combo["tp"], combo["sl"]) / 500.0 * 6.0),
-#                     )
-
-#                 sl_used = min(combo["sl"], balance - mdd_used)
-#                 prob_tp = sl_used / (tp_used + sl_used) if (tp_used + sl_used) > 0 else 0.5
-#                 rndm = random.random()
-#                 if rndm < prob_tp:
-#                     trade_result = tp_used
-#                 else:
-#                     trade_result = -sl_used
-
-#                 balance_after = balance + trade_result
-#                 peak_balance = max(peak_balance, balance_after)
-#                 mdd_after = max(mdd_used, peak_balance - float(account.get("e_mdd_usd", 0.0)))
-#                 if account.get("e_mdd_type") == "static":
-#                     mdd_after = float(account.get("initial_balance", 0.0)) - float(account.get("e_mdd_usd", 0.0))
-#                 mdd_after = min(mdd_after, float(account.get("e_highest_mdd_account", 0.0)))
-
-#                 if balance_after <= mdd_used:
-#                     breached = True
-#                     break
-
-#                 if account.get("e_ddd_usd") is not None and trade_result < -float(account.get("e_ddd_usd", 0.0)):
-#                     breached = True
-#                     break
-
-#                 if account.get("e_suscription_type") == "one_time_30_days" and days >= 20:
-#                     breached = True
-#                     break
-
-#                 if days == 20 and (target_eval - balance_after) > (balance_after - mdd_used):
-#                     breached = True
-#                     break
-
-#                 if balance_after >= target_eval and trades_remaining == 0 and profit_days_remaining == 0:
-#                     passed = True
-#                     break
-
-#             if passed:
-#                 num_passed += 1
-#                 max_breached_streak = 0 if max_breached_streak == 0 else max_breached_streak
-#             else:
-#                 breached_streak += 1
-#                 max_breached_streak = max(max_breached_streak, breached_streak)
-
-#             total_trades += trade_count
-#             total_cost += 0.0
-#             num_resets += 0
-#             num_renews += 0
-
-#         results.append(
-#             {
-#                 "price": combo["price"],
-#                 "mode": combo["mode"],
-#                 "reset_trades": combo["reset_trades"],
-#                 "tp": combo["tp"],
-#                 "sl": combo["sl"],
-#                 "num_sims": num_sims,
-#                 "num_evals": num_sims + num_resets,
-#                 "num_passed": num_passed,
-#                 "prob_pass": num_passed / num_sims if num_sims else 0.0,
-#                 "num_resets": num_resets,
-#                 "num_renews": num_renews,
-#                 "cost_total": total_cost,
-#                 "cost_pass": total_cost / num_passed if num_passed else float("inf"),
-#                 "cost_fund": total_cost + float(account.get("activation_fee_usd", 0.0)) if account.get("activation_fee_type") == "always" else total_cost,
-#                 "trades_avg": total_trades / num_sims if num_sims else 0.0,
-#                 "breached_streak": max_breached_streak,
-#                 "cost_streak": max_cost_streak,
-#             }
-#         )
-#     return results
-
 
 def _should_save_results(config) -> bool:
     # if getattr(config, "num_sims", 0) < 200_000:
@@ -517,36 +374,175 @@ def _should_save_results(config) -> bool:
     # reset_trades = _normalize_list(getattr(config, "reset_trades", []))
     if not list(config.reset_trades):
         return False
+    # return min(config.reset_trades) >= 0 and max(config.reset_trades) <= 20
     return min(config.reset_trades) == 0 and max(config.reset_trades) == 20
 
 def _sanitize_filename(value: str) -> str:
     text = str(value or "").strip()
     return re.sub(r"[^\w\-]+", "_", text)
 
-def _save_final_results_csv(final_results, account):
+def _read_results_in_csv(account):
     exports_root = Path(__file__).resolve().parent / "exports"
     company_short = _sanitize_filename(account.get("company", {}).get("short_name", "unknown"))
     eval_name = _sanitize_filename(account.get("eval1_conditions", {}).get("name", "eval"))
     eval_id = account.get("eval1_conditions", {}).get("id", "unknown")
-    timestamp = datetime.now().strftime("%Y%m%d%H%M")
 
     folder = exports_root / company_short
     folder.mkdir(parents=True, exist_ok=True)
 
-    file_name = f"{eval_name}_{eval_id}_{timestamp}.csv"
+    file_name = f"{eval_name}_{eval_id}.csv"
+    file_path = folder / file_name
+
+    with open(file_path, mode="r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        return list(reader)
+
+def _save_final_results_in_csv(final_results, account, new_file: bool):
+    exports_root = Path(__file__).resolve().parent / "exports"
+    company_short = _sanitize_filename(account.get("company", {}).get("short_name", "unknown"))
+    eval_name = _sanitize_filename(account.get("eval1_conditions", {}).get("name", "eval"))
+    eval_id = account.get("eval1_conditions", {}).get("id", "unknown")
+
+    folder = exports_root / company_short
+    folder.mkdir(parents=True, exist_ok=True)
+
+    file_name = f"{eval_name}_{eval_id}.csv"
     file_path = folder / file_name
 
     if not final_results:
         return file_path
 
-    with file_path.open("w", newline="", encoding="utf-8") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=list(final_results[0].keys()))
-        writer.writeheader()
-        writer.writerows(final_results)
+    if new_file:
+        with file_path.open("w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=list(final_results[0].keys()))
+            writer.writeheader()
+            writer.writerows(final_results)
 
-    return file_path
+        return file_path
+    else:
+        escribir_encabezado = not file_path.exists() or file_path.stat().st_size == 0
 
-def _insert_best_results_to_supabase(best_results_with_conditions):
+        with open(file_path, mode="a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=final_results[0].keys())
+            
+            if escribir_encabezado:
+                writer.writeheader()  # Solo escribe el encabezado si es necesario
+            
+            writer.writerows(final_results)
+
+        print("Resultados añadidos correctamente")
+        return file_path
+
+
+def _insert_best_results_to_supabase(best_results_with_conditions, eval_id, delete: bool):
     if not best_results_with_conditions:
         return None
+    if delete:
+        (supabase.table("eval_sim_results").delete().eq("eval_id", eval_id).execute())
+    # Normalizar results por si vienen de csv y está todo en string
+    for d in best_results_with_conditions:
+        for key, value in d.items():
+            if value == "":
+                d[key] = None
+            if (isinstance(value, str) and value.startswith("[") and value.endswith("]")):
+                d[key] = ast.literal_eval(value)
     return supabase.table("eval_sim_results").insert(best_results_with_conditions).execute()
+
+def _read_final_results_from_csv(account):
+    exports_root = Path(__file__).resolve().parent / "exports"
+    company_short = _sanitize_filename(account.get("company", {}).get("short_name", "unknown"))
+    eval_name = _sanitize_filename(account.get("eval1_conditions", {}).get("name", "eval"))
+    eval_id = account.get("eval1_conditions", {}).get("id", "unknown")
+    
+    folder = exports_root / company_short
+    file_name = f"{eval_name}_{eval_id}.csv"
+    file_path = folder / file_name
+
+    file = Path(file_path)
+    
+    if not file.exists():
+        raise FileNotFoundError(f"No se encontró el archivo csv: {file_path}")
+    
+    with open(file, mode="r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        final_results_from_csv = list(reader)
+        return final_results_from_csv
+
+def _get_best_results_from_final_results(final_results):
+    best = {}
+
+    for d in final_results:
+        d['fund_cost'] = float(d['fund_cost'])
+        price = d["price"]
+
+        if price not in best or d["fund_cost"] < best[price]["fund_cost"]:
+            best[price] = d
+
+    filtered_results = list(best.values())
+
+    return filtered_results
+
+def montecarlo_simulation(account, config, combinations):
+    final_results = []
+    for comb in combinations:
+        combination_results = {
+            'total_sims': 0,
+            'total_evals': 0,
+            'total_resets': 0,
+            'total_renews': 0,
+            'total_passed': 0,
+            'total_cost': 0,
+            'sim_days_avg': 0,
+        }
+        comb_all_results = []
+        for i in range(config.num_sims):
+            account_data = simulate_eval(account, comb)
+            account_results = account_data['results']
+            if account_results['num_evals'] == 0:
+                continue
+            # print(f'account_results: {account_results}')
+            combination_results['total_sims'] += 1
+            combination_results['total_evals'] += account_results['num_evals']
+            combination_results['total_resets'] += account_results['resets']
+            combination_results['total_renews'] += account_results['renews']
+            combination_results['total_passed'] += account_results['passed']
+            combination_results['total_cost'] += account_results['cost']
+            comb_all_results.append(account_results)
+        # print(f'comb_all_results: {comb_all_results}')
+        if combination_results['total_evals'] == 0:
+            continue
+        combination_results['fund_cost'] = round(combination_results['total_cost'] / combination_results['total_passed'], 2) if combination_results['total_passed'] > 0 else 0
+        combination_results['sim_days_avg'] = round(sum(d["sim_days"] for d in comb_all_results) / len(comb_all_results), 1) if len(comb_all_results) else 0
+        combination_results = combination_results | comb
+        final_results.append(combination_results)
+        # print(f'combination_results: {combination_results}')
+
+    best_results = _get_best_results_from_final_results(final_results)
+
+    return final_results, best_results
+
+def _normalize_results_to_save(final_results, best_results, account):
+
+    final_results_with_conditions = []
+    for res in final_results:
+        final_results_with_conditions.append(res | account['eval1_conditions'])
+    for res in final_results_with_conditions:
+        res["eval_id"] = res.pop("id")
+        res.pop("name")
+        res["sl"] = int(res["sl"])
+        res["tp"] = int(res["tp"])
+        if res["reset_cost"] == 0:
+            res["reset_cost"] = None
+
+    best_results_with_conditions = []
+    for res in best_results:
+        best_results_with_conditions.append(res | account['eval1_conditions'])
+    for res in best_results_with_conditions:
+        res["eval_id"] = res.pop("id")
+        res.pop("name")
+        res["sl"] = int(res["sl"])
+        res["tp"] = int(res["tp"])
+        if res["reset_cost"] == 0:
+            res["reset_cost"] = None
+
+    return final_results_with_conditions, best_results_with_conditions

@@ -72,4 +72,9 @@
 
   + Si no hay e_min_days ni e_min_profit_days el Mode Average no se ejecuta.
   + Si no hay resets reset_trades será 0.
-
+  + Si las condiciones de la evaluación no han cambiado pero hay algún precio de eval_prices nuevo que no esté en los resultados, sólo se simularán los precios nuevos y se agregarán tanto al fichero csv como a la base de datos.
+  + Si las condiciones de la evaluación no han cambiado pero hay algún e_tps_usd o e_sls_usd nuevo, sólo se simularán estos nuevos tps o sls, se añadirán al fichero csv, se obtendrán todos los resultados del fichero (los antiguos más los nuevos), se calcularán de nuevo los mejores resultados por precios y se guardarán en la base de datos después de eliminar los registros anteriores, ya que es posible que alguna de las nuevas combinaciones obtengan mejores resultados que las anteriores y tendrán que ser sustituidos.
+  + Si las condiciones de la evaluación no han cambiado pero hay algún precio de eval_prices nuevo y, además, e_tps_usd o e_sls_usd nuevo, 
+    - primero se simulará el nuevo precio (sin incluir los nuevos tps o sls) y se añadiran al csv. 
+    - Y sin guardar en la base de datos, se procederá a realizar las simulaciones con los nuevos sls o tps, con todos los precios, y añadir al csv.
+    - Obtener todos los registros del csv completo y guardar en la base de datos, eliminando los previos.

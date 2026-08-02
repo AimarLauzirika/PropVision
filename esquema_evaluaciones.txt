@@ -22,9 +22,17 @@ ESQUEMA Evaluaciones
       - sim_days: days
     }
   1.4.- simulación de Montecarlo
-    1.4.1.- final_results -> iterar simulate_eval() y generar resultados de Montecarlo (final_results, lo resultados de cada combinación)
+    1.4.1.- final_results -> iterar simulate_eval() y generar resultados de Montecarlo (final_results, los resultados de cada combinación)
     1.4.2.- best_results -> de final_results, sacar los mejores resultados por precio, es decir, los que tienen el fund_cost más bajo
     1.4.3.- Guardar resultados.
+      1.4.3.1.- Condiciones
+        - num_sims >= 200000
+        - modes == "All"
+        - reset_trades == (0,20)
+      1.4.3.2.- Consideraciones
+        - Si no hay resultados guardados para esta cuenta.
+        - Si hay registros guardados, se sobreescribirán si las condiciones han cambiado. Primero eliminar los registros actuales.
+        - Si las condiciones se mantienen pero hay uno o varios precios que no están guardados, se realizará la simulación y se guardarán sólo los precios que no habia previamente guardado, sin eliminar los registros previos. Así se evitará realizar simulaciones innecesarias. Y en el csv se agregarán los nuevos precios al fichero existente.
       1.4.3.1.- Fichero csv de los resultados de todas las combinaciones
       1.4.3.2.- Los mejores resultados guardar en base de datos:
         + eval_id
@@ -44,7 +52,7 @@ ESQUEMA Evaluaciones
           - total_cost
           - sim_days_avg
           - fund_cost
-        + Eval conditions_
+        + Eval conditions:
          - e_target_usd
          - e_mdd_usd
          - e_mdd_type

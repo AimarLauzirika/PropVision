@@ -1,0 +1,28 @@
+Combinaciones
+- f_tps_usd
+- f_sls_usd
+-n f_personal_targets_usd
+-n margins_after_withdrawal
+ 
+Condiciones
+-n f_target_usd
+-n safety_net_usd
+-n f_consistency_pct
+-n f_min_days
+-n f_min_profit_days
+-n f_profit_day_usd
+- f_mdd_usd
+- f_mdd_type
+-n f_ddd_usd
+-n f_highest_mdd_account
+-n mdd_account_after_payout
+- profit_split
+- profit_split_type
+-n withdrawal_cap_pct
+-n min_withdrawal
+-n max_withdrawal
+-n max_withdrawals_per_account
+-n withdrawal_fee
+-n withdrawal_hwm
+-n max_num_payouts
+-n monthly_data_fee

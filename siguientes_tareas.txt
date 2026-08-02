@@ -79,9 +79,10 @@ VALORACIÓN
 
 
 
-- Quiero que la lista de diccionarios final_results se guarde en un fichero csv, en la carpeta exports que ya existe. Los ficheros se guardarán en diferentes carpetas según la compañía de la cuenta (account['company']['short_name']), estas carpetas se llamarán con el 'short_name' de la compañía. El fichero se llamará con el nombre de la evaluación (account['eval1_conditions']['name]) seguido de una barra baja, el id de la evaluación (account['eval1_conditions']['id']), otra barra baja y la fecha y hora todo junto (YYYYMMDDHHMM). Ejemplo E2T-GAU50_3_202607311856.csv.
-- Tambien quiero que la lista de diccionarios final_results_with_conditions se guarde en la base de datos de supabase al que la app tiene acceso. 
-- Condicionantes para guardar. Para que estos resultados se guarden, tanto el fichero csv como en la base de datos, se tienen que cumplir con los siguientes criterios:
-  - Número de simulaciones. Un mínimo de 200000 simulaciones, se comprueba con config.num_sims.
-  - Modes 'All'. Es decir que len(config.modes > 1).
-  - reset_trades. El mínimo de config.reset_trades tendrá que ser 0 y el máximo tiene que ser 20.
+GUARDADO
+- Al hacer click en el botón Empezar Montecarlo, si la opción de guardado no está activado, que salga un mensaje pop-up que avise si quiero continuar sin guardar.
+- Poder detener la simulación.
+- Poder guardar en supabase a partir de los ficheros csv. Los ficheros csv contiene los resultados de todas las combinaciones, por lo que hay que seleccionar los de menor coste de fondeada de cada precio antes de guardar en supabase.
+- Si hay nuevos e_tps_usd o e_sls_usd, se realizarán sólo las nuevas combinaciones y se agregarán a las combinaciones actuales (csv) y del csv completo se obtendrán nuevamente los fund_cost más bajos y se guardarán en la BD.
+- Si la diferencia en e_tps_usd o en e_sls_usd son que hay menos, no hace falta realizar las simulaciones.
+- Si 

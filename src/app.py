@@ -3,12 +3,13 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from pathlib import Path
+from src.propvision.db import supabase
 
 import streamlit as st
 from dotenv import load_dotenv
 
-from src.propvision.data import _format_account_name, load_accounts_with_status
-from src.propvision.simulator import SimulationConfig, build_example_context, simulate_eval, _build_combinations, _get_reset_cost, _should_save_results, _save_final_results_csv, _insert_best_results_to_supabase
+from src.propvision.data import _format_account_name, load_accounts_with_status, load_eval_results_with_id
+from src.propvision.simulator import SimulationConfig, build_example_context, simulate_eval, _build_combinations, _get_reset_cost, _should_save_results, _save_final_results_in_csv, _insert_best_results_to_supabase, montecarlo_simulation, _normalize_results_to_save, _read_results_in_csv, _get_best_results_from_final_results
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -72,17 +73,17 @@ def main() -> None:
                 st.warning("No se encontraron cuentas con ese filtro de empresa o texto.")
 
     with col2:
-        with st.expander("Parámetros de simulación", expanded=True):
-            num_sims = st.number_input("Número de simulaciones", min_value=1, max_value=500000, value=30, step=1000)
-            modes = st.segmented_control("Mode", list(SimulationConfig.modes) + ["All"], default=["All"])
+        with st.expander("Configuración para la simulación", expanded=True):
+            num_sims = st.number_input("Número de simulaciones (mín. 200000 para poder guardar)", min_value=1, max_value=500000, value=200000, step=1000)
+            modes = st.segmented_control("Mode (All para poder guardar)", list(SimulationConfig.modes) + ["All"], default=["All"])
             if modes == "All": modes = SimulationConfig.modes
             else:
                 modes = [modes]
             col21, col22 = st.columns(2)
             with col21:
-                min_reset = st.number_input("Reset trades mínimo", min_value=min(SimulationConfig().reset_trades), max_value=max(SimulationConfig().reset_trades), value=15, step=1)
+                min_reset = st.number_input("Reset trades mínimo (0 para poder guardar), sólo pares", min_value=min(SimulationConfig().reset_trades), max_value=max(SimulationConfig().reset_trades), value=0, step=1)
             with col22:
-                max_reset = st.number_input("Reset trades máximo", min_value=min(SimulationConfig().reset_trades), max_value=max(SimulationConfig().reset_trades), value=15, step=1)
+                max_reset = st.number_input("Reset trades máximo (20 para poder guardar), sólo pares", min_value=min(SimulationConfig().reset_trades), max_value=max(SimulationConfig().reset_trades), value=20, step=1)
             # min_reset = st.number_input("Reset trades mínimo", min_value=0, max_value=20, value=5, step=1)
             # max_reset = st.number_input("Reset trades máximo", min_value=0, max_value=20, value=5, step=1)
             if min_reset > max_reset:
@@ -93,7 +94,11 @@ def main() -> None:
             combinations = _build_combinations(selected_accounts[0], config) if selected_accounts else []
             print(f'Hay {len(combinations)} combinaciones')
             # print(combinations)
-            st.info("Hay %d combinaciones." % len(combinations))
+            if len(combinations):
+                st.info("Hay %d combinaciones." % len(combinations))
+            else:
+                st.warning("Hay %d combinaciones." % len(combinations))
+            
 
             # if st.button("Empezar simulación"):
             #     if not modes:
@@ -162,113 +167,220 @@ def main() -> None:
 
     with st.expander(f"Simulación de Montecarlo", expanded=True):
 
-        if st.button("Empezar Montecarlo"):
-            final_results = []
-            # print(f'combinations: {combinations}')
-            for comb in combinations:
-                combination_results = {
-                    'total_sims': 0,
-                    'total_evals': 0,
-                    'total_resets': 0,
-                    'total_renews': 0,
-                    'total_passed': 0,
-                    'total_cost': 0,
-                    'sim_days_avg': 0,
-                }
-                comb_all_results = []
-                for i in range(config.num_sims):
-                    account_data = simulate_eval(account, comb)
-                    account_results = account_data['results']
-                    if account_results['num_evals'] == 0:
-                        continue
-                    # print(f'account_results: {account_results}')
-                    combination_results['total_sims'] += 1
-                    combination_results['total_evals'] += account_results['num_evals']
-                    combination_results['total_resets'] += account_results['resets']
-                    combination_results['total_renews'] += account_results['renews']
-                    combination_results['total_passed'] += account_results['passed']
-                    combination_results['total_cost'] += account_results['cost']
-                    comb_all_results.append(account_results)
-                # print(f'comb_all_results: {comb_all_results}')
-                if combination_results['total_evals'] == 0:
-                    continue
-                combination_results['fund_cost'] = round(combination_results['total_cost'] / combination_results['total_passed'], 2) if combination_results['total_passed'] > 0 else 0
-                combination_results['sim_days_avg'] = round(sum(d["sim_days"] for d in comb_all_results) / len(comb_all_results), 1) if len(comb_all_results) else 0
-                combination_results = combination_results | comb
-                # combination_results['reset_trades'] = comb['reset_trades']
-                # combination_results = combination_results | config.__dict__ | comb
-                # combination_results.pop('num_sims')
-                # combination_results.pop('modes')
-                final_results.append(combination_results)
-                # print(f'combination_results: {combination_results}')
-
-        #? Mejores resultados para cada precio
+        #* Si en la BD hay guardados los resultados de esta evaluación con las mismas condiciones, no se ejecutará, se mostrarán los resultados
+        # Obtener resultados (si hay)
+        eval_id = account['eval1_id']
+        data = load_eval_results_with_id(eval_id)
+        if data['exc']:
+            st.error(f'Error con supabase: {data['exc']}')
+        elif not data['results']:
+            st.info('No se encontraron resultados para esta evaluación en la base de datos.')
+        new_prices = []
+        new_tps = []
+        new_sls = []
+        same_conditions = True
+        if data['results']:
+            st.markdown(
+                """
+                <div style="line-height:1.7;">
+                <strong>Registros previos</strong><br>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.dataframe(data['results'])
+            # Comprobar si las condiciones actuales coinciden con los de los resultados guardados
+            eval_conditions_fields = ['e_target_usd', 'e_mdd_usd', 'e_mdd_type', 'e_ddd_usd', 'e_consistency_pct', 'e_min_days', 'e_min_profit_days', 'e_profit_day_usd', 'reset_prices','e_suscription_type', 'activation_fee_usd']
+            for condition in eval_conditions_fields:
+                if data['results'][0].get(condition) != account['eval1_conditions'].get(condition):
+                    same_conditions = False
+                    st.warning(f'Hay condiciones diferentes de los resultados de la BD como el de {condition}, se realizará la simulación de nuevo.')
+            # Comprobar si hay precios nuevos
+            if same_conditions:
+                st.info(f'Todas las CONDICIONES coinciden con los resultados de la BD.')
+                new_prices = list(set(account['eval1_conditions']['eval_prices']) - set(data['results'][0]['eval_prices']))
+                new_tps = list(set(account['eval1_conditions']['e_tps_usd']) - set(data['results'][0]['e_tps_usd']))
+                new_sls = list(set(account['eval1_conditions']['e_sls_usd']) - set(data['results'][0]['e_sls_usd']))
+                if new_prices:
+                    st.warning(f'Hay precios que faltan en la BD: {new_prices}.')
+                if new_tps:
+                    st.warning(f'Hay TPs que faltan en la BD: {new_tps}.')
+                if new_sls:
+                    st.warning(f'Hay SLs que faltan en la BD: {new_sls}.')
         
-        # Mínimo fund_cost por price
-        min_cost = {}
-        for d in final_results:
-            price = d["price"]
-            min_cost[price] = min(min_cost.get(price, float("inf")), d["fund_cost"])
+        if not data['results'] or not same_conditions or new_prices or new_tps or new_sls and len(combinations):
+            save_requisites = _should_save_results(config)
+            guardar = st.toggle("Guardar", disabled=not save_requisites, value=True)
+            if save_requisites:
+                st.success("Esta configuración cumple con los requisitos para guardar los resultados de las simulaciones de Montecarlo.")
+            if not save_requisites:
+                st.warning("Esta configuración NO cumple con los requisitos para guardar los resultados de las simulaciones de Montecarlo.")
+            if st.button("Empezar Montecarlo"):
+                if not guardar:
+                    st.dialog('Los resultados de esta simulación No se guardarán.', width="small", dismissible=True, icon=None, on_dismiss="ignore")
 
-        # Filtrar y eliminar duplicados por price
-        seen = set()
-        best_results = [
-            d for d in final_results
-            if d["fund_cost"] == min_cost[d["price"]]
-            and not (d["price"] in seen or seen.add(d["price"]))
-        ]
+                if not data['results'] or not same_conditions:
+                    # 1.- Combinaciones sin filtros
+                    # 2.- Montecarlo simulations
+                    final_results, best_results = montecarlo_simulation(account, config, combinations)
+                    # 3.- Normalizar resultados para guardar
+                    final_results_with_conditions, best_results_with_conditions = _normalize_results_to_save(final_results, best_results, account)
+                    # 4.- Guardar fichero csv
+                    if _should_save_results(config) and guardar:
+                        csv_path = _save_final_results_in_csv(final_results_with_conditions, account, new_file= True)
+                        st.success(f"Resultados exportados a CSV: {csv_path}")
+                    else:
+                        st.warning(f"No se cumplen las condiciones de guardado o se ha seleccionado no guardar")
+                    # 5.- Guardar en Supabase, eliminar si hay registros anteriores
+                    if _should_save_results(config) and guardar:
+                        try:
+                            _insert_best_results_to_supabase(best_results_with_conditions, eval_id, delete= True)
+                            st.success("Resultados guardados en Supabase.")
+                            data = load_eval_results_with_id(eval_id)
+                            st.markdown(
+                                """
+                                <div style="line-height:1.7;">
+                                <strong>Todos los resultados de la evaluación en la base de datos:</strong><br>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                            st.dataframe(data['results'])
+                        except Exception as exc:
+                            st.warning(f"No se pudo guardar en Supabase: {exc}")
+
+                elif same_conditions and new_prices and not new_tps and not new_sls:
+                    # 1.- Filtrar combinaciones, sólo nuevos precios
+                    combinations = [c for c in combinations if c['price'] in new_prices]
+                    # 2.- Simulaciones de Montecarlo
+                    final_results, best_results = montecarlo_simulation(account, config, combinations)
+                    # 3.- Normalizar resultados para guardar
+                    final_results_with_conditions, best_results_with_conditions = _normalize_results_to_save(final_results, best_results, account)
+                    # 4.- Añadir a fichero csv existente
+                    if _should_save_results(config) and guardar:
+                        csv_path = _save_final_results_in_csv(final_results_with_conditions, account, new_file= False)
+                        st.success(f"Resultados exportados a CSV: {csv_path}")
+                    else:
+                        st.warning(f"No se cumplen las condiciones de guardado o se ha seleccionado no guardar")
+                    
+                    # 5.- Guardar en Supabase, añadir sin eliminar
+                    if _should_save_results(config) and guardar:
+                        try:
+                            _insert_best_results_to_supabase(best_results_with_conditions, eval_id, delete= False)
+                            st.success("Resultados guardados en Supabase.")
+                            # Actualizar los registros anteriores con los nuevos precios
+                            response = (
+                                supabase.table("eval_sim_results")
+                                .update({"eval_prices": account['eval1_conditions']['eval_prices']})
+                                .eq("eval_id", eval_id)
+                                .execute()
+                            )
+                            st.success('Registros anteriores actualizado con eval_prices completo.')
+                            # Obtener todos los registros de Supabase
+                            data = load_eval_results_with_id(eval_id)
+                            st.markdown(
+                                """
+                                <div style="line-height:1.7;">
+                                <strong>Todos los resultados de la evaluación en la base de datos:</strong><br>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                            st.dataframe(data['results'])
+                        except Exception as exc:
+                            st.warning(f"No se pudo guardar en Supabase: {exc}")
+                elif same_conditions and (new_tps or new_sls) and not new_prices:
+                    # 1.- Filtrar combinaciones, sólo nuevos tps o sls
+                    combinations = [c for c in combinations if c['tp'] in new_tps or c['sl'] in new_sls]
+                    # 2.- Simulaciones de Montecarlo
+                    final_results, best_results = montecarlo_simulation(account, config, combinations)
+                    # 3.- Normalizar resultados para guardar
+                    final_results_with_conditions, best_results_with_conditions = _normalize_results_to_save(final_results, best_results, account)
+                    # 4.- Añadir a fichero csv existente
+                    if _should_save_results(config) and guardar:
+                        csv_path = _save_final_results_in_csv(final_results_with_conditions, account, new_file= False)
+                        st.success(f"Resultados exportados a CSV: {csv_path}")
+                    else:
+                        st.warning(f"No se cumplen las condiciones de guardado o se ha seleccionado no guardar")
+                    # 5.- Obtener best_results del fichero csv
+                    final_results_with_conditions = _read_results_in_csv(account)
+                    best_results_with_conditions = _get_best_results_from_final_results(final_results_with_conditions)
+                    # print('******************-------------****************---------------************-----------------')
+                    # print('final_results_with_conditions from csv:')
+                    # for f in final_results_with_conditions:
+                    #     print(f)
+                    # print('best_results_with_conditions from csv:')
+                    # for b in best_results_with_conditions:
+                    #     print(b)
+                        
+                    # 6.- Guardar en Supabase, añadir sin eliminar
+                    if _should_save_results(config) and guardar:
+                        try:
+                            _insert_best_results_to_supabase(best_results_with_conditions, eval_id, delete= True)
+                            st.success("Resultados guardados en Supabase.")
+                            # Actualizar los registros anteriores con los nuevos tps y sls
+                            response = (
+                                supabase.table("eval_sim_results")
+                                .update({"e_tps_usd": account['eval1_conditions']['e_tps_usd'], "e_sls_usd": account['eval1_conditions']['e_sls_usd']})
+                                .eq("eval_id", eval_id)
+                                .execute()
+                            )
+                            st.success('Registros anteriores actualizado con eval_prices completo.')
+                            # Obtener todos los registros de Supabase
+                            data = load_eval_results_with_id(eval_id)
+                            st.markdown(
+                                """
+                                <div style="line-height:1.7;">
+                                <strong>Todos los resultados de la evaluación en la base de datos:</strong><br>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                            st.dataframe(data['results'])
+                        except Exception as exc:
+                            st.warning(f"No se pudo guardar en Supabase: {exc}")
+
+                elif same_conditions and new_prices and (new_tps or new_sls):
+                    # 1.- Filtrar combinaciones, sólo nuevos precios
+                    new_prices_combinations = [c for c in combinations if c['price'] in new_prices and not c['tp'] in new_tps and not c['sl'] in new_sls]
+                    # 2.- Simulaciones de Montecarlo
+                    final_results, best_results = montecarlo_simulation(account, config, new_prices_combinations)
+                    # 3.- Normalizar resultados para guardar
+                    final_results_with_conditions, best_results_with_conditions = _normalize_results_to_save(final_results, best_results, account)
+                    # 4.- Añadir a fichero csv existente
+                    if _should_save_results(config) and guardar:
+                        csv_path = _save_final_results_in_csv(final_results_with_conditions, account, new_file= False)
+                        st.success(f"Resultados exportados a CSV: {csv_path}")
+                    else:
+                        st.warning(f"No se cumplen las condiciones de guardado o se ha seleccionado no guardar")
+                    # 5.- Combinaciones, con todos los precios, pero sólo con los nuevos tps y sls
+                    combinations = _build_combinations(account, config)
+                    combinations = [c for c in combinations if c['tp'] in new_tps or c['sl'] in new_sls]
+                    # 6.- Simulaciones de Montecarlo
+                    final_results, best_results = montecarlo_simulation(account, config, combinations)
+                    # 7.- Normalizar resultados para guardar
+                    final_results_with_conditions, best_results_with_conditions = _normalize_results_to_save(final_results, best_results, account)
+                    # 8.- Añadir a csv
+                    if _should_save_results(config) and guardar:
+                        csv_path = _save_final_results_in_csv(final_results_with_conditions, account, new_file= False)
+                        st.success(f"Resultados exportados a CSV: {csv_path}")
+                    # 9.- Obtener best_results del fichero csv
+                    final_results_with_conditions = _read_results_in_csv(account)
+                    best_results_with_conditions = _get_best_results_from_final_results(final_results_with_conditions)
+                    # 10.- Guardar en Supabase, eliminar si hay registros anteriores
+                    if _should_save_results(config) and guardar:
+                        try:
+                            _insert_best_results_to_supabase(best_results_with_conditions, eval_id, delete= True)
+                            st.success("Resultados guardados en Supabase.")
+                            data = load_eval_results_with_id(eval_id)
+                            st.markdown(
+                                """
+                                <div style="line-height:1.7;">
+                                <strong>Todos los resultados de la evaluación en la base de datos:</strong><br>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                            st.dataframe(data['results'])
+                        except Exception as exc:
+                            st.warning(f"No se pudo guardar en Supabase: {exc}")
 
 
-
-        st.markdown(
-            f"""
-            <div style="line-height:1.7;">
-            <strong>Mejores resultados por precio</strong><br>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.dataframe(best_results, width='stretch')
-
-        # Todas las combinaciones
-        st.markdown(
-            f"""
-            <div style="line-height:1.7;">
-            <strong>Todas las combinaciones:</strong> {len(final_results)}<br>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.dataframe(final_results, width='stretch')
-
-        #? GUARDAR RESULTADOS
-
-        best_results_with_conditions = []
-        for res in best_results:
-            best_results_with_conditions.append(res | account['eval1_conditions'])
-        # Normalizar resultados
-        for res in best_results_with_conditions:
-            res["eval_id"] = res.pop("id")
-            res.pop("name")
-            res["sl"] = int(res["sl"])
-            res["tp"] = int(res["tp"])
-            if res["reset_cost"] == 0:
-                res["reset_cost"] = None
-        # best_results_with_conditions = final_results | account['eval1_conditions']
-        st.dataframe(best_results_with_conditions, width='stretch')
-        
-
-        # ...existing code...
-        if _should_save_results(config):
-            csv_path = _save_final_results_csv(final_results, account)
-            st.write(f"Resultados exportados a CSV: {csv_path}")
-
-            try:
-                supabase_response = _insert_best_results_to_supabase(best_results_with_conditions)
-                st.write("Resultados guardados en Supabase.")
-                st.write(supabase_response)
-            except Exception as exc:
-                st.warning(f"No se pudo guardar en Supabase: {exc}")
-        else:
-            st.write("No se cumplen las condiciones de guardado: num_sims >= 200000, modos > 1 y reset_trades desde 0 hasta 20.")
 
 if __name__ == "__main__":
     main()

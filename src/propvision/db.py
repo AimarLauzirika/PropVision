@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 from supabase import Client, create_client
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / ".env")
+load_dotenv(".env")
+# load_dotenv(ROOT / ".env")
 
 SUPABASE_URL = getenv("SUPABASE_URL")
 SUPABASE_KEY = getenv("SUPABASE_KEY")
