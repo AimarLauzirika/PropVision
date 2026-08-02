@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from typing import Any, Dict, List, Tuple
+from src.propvision.db import supabase
 
 import requests
 from dotenv import load_dotenv
@@ -113,6 +114,29 @@ def load_accounts_with_status() -> Tuple[List[Dict[str, Any]], str]:
     except Exception as exc:
         return _mock_accounts(), f"Error inesperado al cargar cuentas de Supabase: {exc}"
 
+def load_eval_results_with_id(id) -> List[Dict[str, Any]]:
+    try:
+        data = {'results': [], 'exc': ''}
+        response = (
+            supabase.table("eval_sim_results")
+            .select("*")
+            .eq("eval_id", id)
+            .execute()
+        )
+        
+        results = response.data
+        data['results'] = results
+        return data
+        
+        if not results:
+            st.warning('No se encontraron results')
+        else:
+            st.info(f"Se encontraron {len(results)} results")
+            # Usar los results...
+            
+    except Exception as e:
+        data['exc'] = e
+        return data
 
 # def load_accounts() -> List[Dict[str, Any]]:
 #     accounts, _ = load_accounts_with_status()
