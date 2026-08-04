@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.app import _format_account_name
+from src.propvision.data import _format_account_name
 from src.propvision.simulator import SimulationConfig, build_example_context, simulate_account, simulate_example
 
 
