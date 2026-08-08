@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Literal
 from src.propvision.db import supabase
 
 import requests
@@ -71,7 +71,7 @@ def load_accounts_with_status() -> Tuple[List[Dict[str, Any]], str]:
 
         # Accounts endpoint
         response_accounts = requests.get(
-            f"{url}/rest/v1/accounts?select=id,name,company_id,initial_balance,eval1_id",
+            f"{url}/rest/v1/accounts?select=id,name,company_id,initial_balance,eval1_id,funded_id",
             # f"{url}/rest/v1/accounts?select=id,name,company_id,initial_balance,e1_target_usd,e_mdd_type,a_mdd_usd,e_ddd_usd,e_consistency_pct,e_min_days,e_min_profit_days,a_profit_day_usd,e_suscription_type,activation_fee_usd,e_tps_usd,e_sls_usd,reset_prices,eval_prices,eval1_id",
             headers={"apikey": key, "Authorization": f"Bearer {key}"},
             timeout=10,
@@ -92,21 +92,29 @@ def load_accounts_with_status() -> Tuple[List[Dict[str, Any]], str]:
 
         evals = {condition["id"]: condition for condition in response_evals.json()}
 
+        # Funded conditions endpoint
+        response_funded = requests.get(
+            f"{url}/rest/v1/funded?select=id,name,f_personal_targets_usd,f_mdd_type,f_mdd_usd,f_ddd_usd,f_consistency_pct,f_min_days,f_min_profit_days,f_profit_day_usd,f_tps_usd,f_sls_usd,margins_after_withdrawal,f_target_usd,safety_net_usd,f_highest_mdd_account,mdd_account_after_payout,profit_split,profit_split_type,withdrawal_cap_pct,min_withdrawal,max_withdrawal,max_withdrawals_per_account,withdrawal_fee,target_each_payout,max_num_payouts,monthly_data_fee",
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            timeout=10,
+        )
+        if response_funded.status_code >= 400:
+            error_text = response_funded.text[:200]
+            return _mock_accounts(), f"Supabase devolvió {response_funded.status_code}: {error_text}"
+
+        fundeds = {condition["id"]: condition for condition in response_funded.json()}
+
         accounts = response_accounts.json()
         for account in accounts:
             company_id = account.get("company_id")
             company = companies.get(company_id)
-            # company = companies.get(company_id) or {
-            #     "id": company_id,
-            #     "short_name": "UNK",
-            #     "long_name": "Sin empresa",
-            # }
-            # if "long_name" not in company:
-            #     company["long_name"] = company.get("short_name") or "Sin empresa"
             account["company"] = company
             eval1_id = account.get("eval1_id")
             eval1_conditions = evals.get(eval1_id)
             account["eval1_conditions"] = eval1_conditions
+            funded_id = account.get("funded_id")
+            funded_conditions = fundeds.get(funded_id)
+            account["funded_conditions"] = funded_conditions
         accounts.sort(key=lambda item: (item.get("company", {}).get("short_name", ""), item.get("name", "")))
         return accounts, f"Conectado a Supabase correctamente ({len(accounts)} cuentas cargadas)."
     except requests.RequestException as exc:
@@ -114,25 +122,20 @@ def load_accounts_with_status() -> Tuple[List[Dict[str, Any]], str]:
     except Exception as exc:
         return _mock_accounts(), f"Error inesperado al cargar cuentas de Supabase: {exc}"
 
-def load_eval_results_with_id(id) -> List[Dict[str, Any]]:
+def load_results_with_id(id, account_type: Literal["eval", "funded"]) -> List[Dict[str, Any]]:
     try:
         data = {'results': [], 'exc': ''}
+        id_column = 'eval_id' if account_type == 'eval' else 'funded_id'
         response = (
-            supabase.table("eval_sim_results")
+            supabase.table(f"{account_type}_sim_results")
             .select("*")
-            .eq("eval_id", id)
+            .eq(id_column, id)
             .execute()
         )
         
         results = response.data
         data['results'] = results
         return data
-        
-        if not results:
-            st.warning('No se encontraron results')
-        else:
-            st.info(f"Se encontraron {len(results)} results")
-            # Usar los results...
             
     except Exception as e:
         data['exc'] = e
