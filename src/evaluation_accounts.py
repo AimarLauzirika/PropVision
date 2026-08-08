@@ -6,19 +6,19 @@ from typing import Any, Dict, List
 import streamlit as st
 from dotenv import load_dotenv
 
-from src.propvision.data import _format_account_name, load_accounts_with_status, load_eval_results_with_id
+from src.propvision.data import _format_account_name, load_accounts_with_status, load_results_with_id
 from src.propvision.db import supabase
 from src.propvision.simulator import (
     SimulationConfig,
     simulate_eval,
     _build_combinations,
     _should_save_results,
-    _save_final_results_in_csv,
-    _insert_best_results_to_supabase,
-    montecarlo_simulation,
-    _normalize_results_to_save,
+    _save_eval_final_results_in_csv,
+    _insert_best_eval_results_to_supabase,
+    montecarlo_simulation_eval,
+    _normalize_eval_results_to_save,
     _read_results_in_csv,
-    _get_best_results_from_final_results,
+    _get_best_results_from_eval_final_results,
 )
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -53,7 +53,7 @@ def _render_simulation_page(
             else:
                 st.warning(connection_status)
 
-            st.info("Se han cargado %d cuentas desde Supabase." % len(accounts))
+            st.info("Se han cargado %d evaluaciones desde Supabase." % len(accounts))
 
             selected_company = st.selectbox("Filtrar por empresa", ["Todas"] + company_names)
             filtered_accounts = [
@@ -127,7 +127,6 @@ def _render_simulation_page(
                 reset_trades=tuple(range(min_reset, max_reset + 1)),
             )
             combinations = _build_combinations(selected_accounts[0], config) if selected_accounts else []
-
             if combinations:
                 st.info("Hay %d combinaciones." % len(combinations))
             else:
@@ -181,7 +180,7 @@ def _render_simulation_page(
 
         account = selected_accounts[0]
         eval_id = account["eval1_id"]
-        data = load_eval_results_with_id(eval_id)
+        data = load_results_with_id(eval_id, "eval")
         if data["exc"]:
             st.error(f'Error con supabase: {data["exc"]}')
         elif not data["results"]:
@@ -235,7 +234,7 @@ def _render_simulation_page(
                     st.warning(f'Hay SLs que faltan en la BD: {new_sls}.')
 
         if not data["results"] or not same_conditions or new_prices or new_tps or new_sls and len(combinations):
-            save_requisites = _should_save_results(config)
+            save_requisites = _should_save_results(config, 'eval')
             guardar = st.toggle("Guardar", disabled=not save_requisites, value=True)
             if save_requisites:
                 st.success("Esta configuración cumple con los requisitos para guardar los resultados de las simulaciones de Montecarlo.")
@@ -253,20 +252,20 @@ def _render_simulation_page(
                     )
 
                 if not data["results"] or not same_conditions:
-                    final_results, best_results = montecarlo_simulation(account, config, combinations)
-                    final_results_with_conditions, best_results_with_conditions = _normalize_results_to_save(
+                    final_results, best_results = montecarlo_simulation_eval(account, config, combinations)
+                    final_results_with_conditions, best_results_with_conditions = _normalize_eval_results_to_save(
                         final_results, best_results, account
                     )
-                    if _should_save_results(config) and guardar:
-                        csv_path = _save_final_results_in_csv(final_results_with_conditions, account, new_file=True)
+                    if _should_save_results(config, 'eval') and guardar:
+                        csv_path = _save_eval_final_results_in_csv(final_results_with_conditions, account, new_file=True)
                         st.success(f"Resultados exportados a CSV: {csv_path}")
                     else:
                         st.warning("No se cumplen las condiciones de guardado o se ha seleccionado no guardar")
-                    if _should_save_results(config) and guardar:
+                    if _should_save_results(config, 'eval') and guardar:
                         try:
-                            _insert_best_results_to_supabase(best_results_with_conditions, eval_id, delete=True)
+                            _insert_best_eval_results_to_supabase(best_results_with_conditions, eval_id, delete=True)
                             st.success("Resultados guardados en Supabase.")
-                            data = load_eval_results_with_id(eval_id)
+                            data = load_results_with_id(eval_id, "eval")
                             st.markdown(
                                 """
                                 <div style="line-height:1.7;">
@@ -280,22 +279,22 @@ def _render_simulation_page(
 
                 elif same_conditions and new_prices and not new_tps and not new_sls:
                     combinations = [c for c in combinations if c["price"] in new_prices]
-                    final_results, best_results = montecarlo_simulation(account, config, combinations)
-                    final_results_with_conditions, best_results_with_conditions = _normalize_results_to_save(
+                    final_results, best_results = montecarlo_simulation_eval(account, config, combinations)
+                    final_results_with_conditions, best_results_with_conditions = _normalize_eval_results_to_save(
                         final_results, best_results, account
                     )
-                    if _should_save_results(config) and guardar:
-                        csv_path = _save_final_results_in_csv(final_results_with_conditions, account, new_file=False)
+                    if _should_save_results(config, 'eval') and guardar:
+                        csv_path = _save_eval_final_results_in_csv(final_results_with_conditions, account, new_file=False)
                         st.success(f"Resultados exportados a CSV: {csv_path}")
                     else:
                         st.warning("No se cumplen las condiciones de guardado o se ha seleccionado no guardar")
-                    if _should_save_results(config) and guardar:
+                    if _should_save_results(config, 'eval') and guardar:
                         try:
-                            _insert_best_results_to_supabase(best_results_with_conditions, eval_id, delete=False)
+                            _insert_best_eval_results_to_supabase(best_results_with_conditions, eval_id, delete=False)
                             st.success("Resultados guardados en Supabase.")
                             supabase.table("eval_sim_results").update({"eval_prices": account["eval1_conditions"]["eval_prices"]}).eq("eval_id", eval_id).execute()
                             st.success("Registros anteriores actualizado con eval_prices completo.")
-                            data = load_eval_results_with_id(eval_id)
+                            data = load_results_with_id(eval_id, "eval")
                             st.markdown(
                                 """
                                 <div style="line-height:1.7;">
@@ -309,22 +308,22 @@ def _render_simulation_page(
 
                 elif same_conditions and (new_tps or new_sls) and not new_prices:
                     combinations = [c for c in combinations if c["tp"] in new_tps or c["sl"] in new_sls]
-                    final_results, best_results = montecarlo_simulation(account, config, combinations)
-                    final_results_with_conditions, best_results_with_conditions = _normalize_results_to_save(
+                    final_results, best_results = montecarlo_simulation_eval(account, config, combinations)
+                    final_results_with_conditions, best_results_with_conditions = _normalize_eval_results_to_save(
                         final_results, best_results, account
                     )
-                    if _should_save_results(config) and guardar:
-                        csv_path = _save_final_results_in_csv(final_results_with_conditions, account, new_file=False)
+                    if _should_save_results(config, 'eval') and guardar:
+                        csv_path = _save_eval_final_results_in_csv(final_results_with_conditions, account, new_file=False)
                         st.success(f"Resultados exportados a CSV: {csv_path}")
                     else:
                         st.warning("No se cumplen las condiciones de guardado o se ha seleccionado no guardar")
-                    final_results_with_conditions = _read_results_in_csv(account)
-                    best_results_with_conditions = _get_best_results_from_final_results(final_results_with_conditions)
-                    if _should_save_results(config) and guardar:
+                    final_results_with_conditions = _read_results_in_csv(account, "eval")
+                    best_results_with_conditions = _get_best_results_from_eval_final_results(final_results_with_conditions)
+                    if _should_save_results(config, 'eval') and guardar:
                         try:
-                            _insert_best_results_to_supabase(best_results_with_conditions, eval_id, delete=True)
+                            _insert_best_eval_results_to_supabase(best_results_with_conditions, eval_id, delete=True)
                             st.success("Resultados guardados en Supabase.")
-                            data = load_eval_results_with_id(eval_id)
+                            data = load_results_with_id(eval_id, "eval")
                             st.markdown(
                                 """
                                 <div style="line-height:1.7;">
@@ -342,31 +341,31 @@ def _render_simulation_page(
                         for c in combinations
                         if c["price"] in new_prices and c["tp"] not in new_tps and c["sl"] not in new_sls
                     ]
-                    final_results, best_results = montecarlo_simulation(account, config, new_prices_combinations)
-                    final_results_with_conditions, best_results_with_conditions = _normalize_results_to_save(
+                    final_results, best_results = montecarlo_simulation_eval(account, config, new_prices_combinations)
+                    final_results_with_conditions, best_results_with_conditions = _normalize_eval_results_to_save(
                         final_results, best_results, account
                     )
-                    if _should_save_results(config) and guardar:
-                        csv_path = _save_final_results_in_csv(final_results_with_conditions, account, new_file=False)
+                    if _should_save_results(config, 'eval') and guardar:
+                        csv_path = _save_eval_final_results_in_csv(final_results_with_conditions, account, new_file=False)
                         st.success(f"Resultados exportados a CSV: {csv_path}")
                     else:
                         st.warning("No se cumplen las condiciones de guardado o se ha seleccionado no guardar")
                     combinations = _build_combinations(account, config)
                     combinations = [c for c in combinations if c["tp"] in new_tps or c["sl"] in new_sls]
-                    final_results, best_results = montecarlo_simulation(account, config, combinations)
-                    final_results_with_conditions, best_results_with_conditions = _normalize_results_to_save(
+                    final_results, best_results = montecarlo_simulation_eval(account, config, combinations)
+                    final_results_with_conditions, best_results_with_conditions = _normalize_eval_results_to_save(
                         final_results, best_results, account
                     )
-                    if _should_save_results(config) and guardar:
-                        csv_path = _save_final_results_in_csv(final_results_with_conditions, account, new_file=False)
+                    if _should_save_results(config, 'eval') and guardar:
+                        csv_path = _save_eval_final_results_in_csv(final_results_with_conditions, account, new_file=False)
                         st.success(f"Resultados exportados a CSV: {csv_path}")
-                    final_results_with_conditions = _read_results_in_csv(account)
-                    best_results_with_conditions = _get_best_results_from_final_results(final_results_with_conditions)
-                    if _should_save_results(config) and guardar:
+                    final_results_with_conditions = _read_results_in_csv(account, "eval")
+                    best_results_with_conditions = _get_best_results_from_eval_final_results(final_results_with_conditions)
+                    if _should_save_results(config, 'eval') and guardar:
                         try:
-                            _insert_best_results_to_supabase(best_results_with_conditions, eval_id, delete=True)
+                            _insert_best_eval_results_to_supabase(best_results_with_conditions, eval_id, delete=True)
                             st.success("Resultados guardados en Supabase.")
-                            data = load_eval_results_with_id(eval_id)
+                            data = load_results_with_id(eval_id, "eval")
                             st.markdown(
                                 """
                                 <div style="line-height:1.7;">
