@@ -19,6 +19,7 @@ from src.propvision.simulator import (
     _normalize_eval_results_to_save,
     _read_results_in_csv,
     _get_best_results_from_eval_final_results,
+    _csv_file_exist,
 )
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -185,6 +186,28 @@ def _render_simulation_page(
             st.error(f'Error con supabase: {data["exc"]}')
         elif not data["results"]:
             st.info('No se encontraron resultados para esta evaluación en la base de datos.')
+            if _csv_file_exist(account, 'eval'):
+                results_from_csv = _read_results_in_csv(account, 'eval')
+                if results_from_csv:
+                    st.text("Hay resultados en el fichero csv, ¿quieres guardarlos en la base de datos?")
+                    if st.button("Guardar"):
+                        # st.info("Ya voy!")
+                        results_from_csv = _read_results_in_csv(account, 'eval')
+                        best_results = _get_best_results_from_eval_final_results(results_from_csv)
+                        try:
+                            _insert_best_eval_results_to_supabase(best_results, eval_id, delete=True)
+                            st.success("Resultados guardados en Supabase.")
+                            data = load_results_with_id(eval_id, "eval")
+                            st.markdown(
+                                """
+                                <div style="line-height:1.7;">
+                                <strong>Todos los resultados de la cuentas fondeadas en la base de datos:</strong><br>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                            st.dataframe(data["results"])
+                        except Exception as exc:
+                            st.warning(f"No se pudo guardar en Supabase: {exc}")
 
         new_prices: List[Any] = []
         new_tps: List[Any] = []
@@ -379,7 +402,7 @@ def _render_simulation_page(
 
 
 def render_evaluation_page() -> None:
-    st.title(":orange[Evaluaciones] - PropVision")
+    st.title("PropVision - :orange[Evaluaciones]")
     st.caption("Simulaciones de evaluación para prop firms con enfoque Monte Carlo.")
     _render_simulation_page(
         page_label="evaluación",

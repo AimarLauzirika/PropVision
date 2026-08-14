@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import re
 import os
+import math
 from pathlib import Path
 import csv
 import random
@@ -117,11 +118,12 @@ def _build_combinations(account: Dict[str, Any], config: SimulationConfig) -> Li
             lista_unica.append(combo)
 
     combos = lista_unica
-    # print(f'{len(combos)} combinaciones')
 
     return combos
 
 def _build_funded_combinations(account: Dict[str, Any], config: FundedSimulationConfig) -> List[Dict[str, Any]]:
+    f2_tps_usd = _coerce_list(account['funded_conditions'].get("f2_tps_usd")) if _coerce_list(account['funded_conditions'].get("f2_tps_usd")) else [0]
+    f2_sls_usd = _coerce_list(account['funded_conditions'].get("f2_sls_usd")) if _coerce_list(account['funded_conditions'].get("f2_sls_usd")) else [0]
     f_personal_targets_usd = _coerce_list(account['funded_conditions'].get("f_personal_targets_usd")) if _coerce_list(account['funded_conditions'].get("f_personal_targets_usd")) else [0]
     margins_after_withdrawal = _coerce_list(account['funded_conditions'].get("margins_after_withdrawal")) if _coerce_list(account['funded_conditions'].get("margins_after_withdrawal")) else [0]
     combos: List[Dict[str, Any]] = []
@@ -131,15 +133,19 @@ def _build_funded_combinations(account: Dict[str, Any], config: FundedSimulation
                 for tp_mode in config.tp_modes:
                     for sl in account["funded_conditions"].get("f_sls_usd"):
                         for tp in account["funded_conditions"].get("f_tps_usd"):
-                            combo = {
-                                        "personal_target": int(pTarget),
-                                        "margin": int(margin),
-                                        "payout_mode": payout_mode,
-                                        "tp_mode": tp_mode,
-                                        "sl": int(sl),
-                                        "tp": int(tp),
-                                    }
-                            combos.append(combo)
+                            for sl2 in f2_sls_usd:
+                                for tp2 in f2_tps_usd:
+                                    combo = {
+                                                "personal_target": int(pTarget),
+                                                "margin": int(margin),
+                                                "payout_mode": payout_mode,
+                                                "tp_mode": tp_mode,
+                                                "sl": int(sl),
+                                                "tp": int(tp),
+                                                "sl2": int(sl2),
+                                                "tp2": int(tp2),
+                                            }
+                                    combos.append(combo)
 
     # Condicionantes:
         # Si no hay e_min_days ni e_min_profit_days el Mode average no se ejecuta
@@ -408,21 +414,25 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
     trs: List[Dict[str, Any]] = []
     results: Dict = {}
     # General conditions
-    initial_balance = float(account.get("initial_balance"))
+    initial_balance = int(account.get("initial_balance"))
     subscription_type = account['funded_conditions'].get("f_suscription_type")
     f_min_days = _int_or_zero(account['funded_conditions'].get("f_min_days"))
     f_min_profit_days = _int_or_zero(account['funded_conditions'].get("f_min_profit_days"))
     profit_day_usd = _float_or_zero(account['funded_conditions'].get("f_profit_day_usd", 0.0))
     f_mdd_type = account['funded_conditions'].get("f_mdd_type")
-    f_mdd_usd = float(account['funded_conditions'].get("f_mdd_usd"))
-    f_ddd_usd = float(account['funded_conditions'].get("f_ddd_usd"))
-    ddd_soft_breach = account['company']['ddd_soft_breach']
+    f_mdd_usd = _int_or_zero(account['funded_conditions'].get("f_mdd_usd"))
+    f_ddd_usd = _int_or_zero(account['funded_conditions'].get("f_ddd_usd"))
+    f_ddd_usd = f_ddd_usd if f_ddd_usd else 999999
+    ddd_soft_breach = account['funded_conditions']['f_ddd_soft_breach']
     target_usd = _int_or_zero(account['funded_conditions'].get("f_target_usd"))
     personal_target = initial_balance + combo.get("personal_target")
     target_initial = initial_balance + target_usd
     target_each_payout_usd = _int_or_zero(account['funded_conditions']['target_each_payout'])
     min_withdrawal = _int_or_zero(account['funded_conditions'].get("min_withdrawal"))
     max_withdrawal = _int_or_zero(account['funded_conditions'].get("max_withdrawal"))
+    withdrawal_cap_pct = _int_or_zero(account['funded_conditions'].get("withdrawal_cap_pct"))
+    if withdrawal_cap_pct == 0:
+        withdrawal_cap_pct = 100
     safety_net_usd = _int_or_zero(account['funded_conditions'].get("safety_net_usd"))
     safety_net_account = initial_balance + safety_net_usd
     margin = combo["margin"]
@@ -447,10 +457,10 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
     consistency_pct = account['funded_conditions'].get("f_consistency_pct")
     consistency_pct = 100.0 if consistency_pct is None or consistency_pct == 0 else float(consistency_pct)
     consistency_base = initial_balance
-    target_consist = consistency_base + (combo["tp"] / (consistency_pct / 100))
+    target_consist = consistency_base + (combo["tp"] / (consistency_pct / 100)) if consistency_pct < 100 else consistency_base
     general_commission = max(6.0, max(float(combo.get("tp", 0.0)), float(combo.get("sl", 0.0))) / 500.0 * 6.0)
     commission = general_commission
-    target_ = max(target_initial + general_commission, target_consist, min_withdrawal_target) + general_commission
+    target_ = max(target_initial + general_commission, target_consist, withdrawal_target) + general_commission
     profit_remaining = (target_ + general_commission) - balance
     days = 0
     trades = 0
@@ -458,13 +468,20 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
     total_cost = 0
     account_end = False
     withdrawal_realized = False
+    target_achieved = False
     withdrawal = 0
     payout = 0
     num_payouts = 0
     profits = 0
 
+    combo_tp = combo["tp"]
+    combo_sl = combo["sl"]
+    if combo["tp2"] == 0:
+        combo["tp2"] = combo["tp"]
+    if combo["sl2"] == 0:
+        combo["sl2"] = combo["sl"]
 
-    while not account_end and combo['sl'] <= f_ddd_usd:
+    while not account_end and combo_sl <= f_ddd_usd:
 
         days += 1
         trades += 1
@@ -483,7 +500,11 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
         if withdrawal_realized:
             trades = 1
             profit_days = 0
-            consistency_base = balance_after
+            consistency_base = balance_after if consistency_pct < 100 else initial_balance
+
+        if target_achieved:
+            combo_tp = combo["tp2"]
+            combo_sl = combo["sl2"]
 
         withdrawal_realized = False
         withdrawal = 0
@@ -496,15 +517,15 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
         max_days_remainig = max(trades_remaining, profit_days_remaining)
 
         if combo["tp_mode"] == "Full":
-            tp_used = min(combo["tp"], profit_remaining)
+            tp_used = min(combo_tp, profit_remaining)
             if profit_days_remaining: tp_used = max(tp_used, profit_day_usd)
         if combo["tp_mode"] == "Calculate":
-            tp_used = min(combo["tp"], profit_remaining - (profits_in_profit_days_remaining - profit_day_usd), profit_remaining)
+            tp_used = min(combo_tp, profit_remaining - (profits_in_profit_days_remaining - profit_day_usd), profit_remaining)
         if combo["tp_mode"] == "Average":
             tp_used = profit_remaining / max(max_days_remainig, 1)
         tp_used = profit_day_usd if profit_days_remaining and tp_used < profit_day_usd else tp_used
-        tp_used = min(tp_used + commission, combo['tp'])
-        sl_used = max(0.0, min(combo["sl"], balance - mdd_used))
+        tp_used = max(tp_used + commission, combo_tp)
+        sl_used = max(0.0, min(combo_sl, balance - mdd_used))
         tp_used = round(tp_used,2)
         sl_used = round(sl_used,2)
 
@@ -514,7 +535,7 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
             target_consist = max(target_consist, consistency_base + (tp_used / (consistency_pct / 100)) + general_commission)
         target_each_payout = consistency_base + target_each_payout_usd
         target_ = max(target_, target_consist, personal_target, withdrawal_target, target_each_payout)
-        # profit_remaining = target_ - balance #? Para que se actualice
+        profit_remaining = target_ - balance #? Para que se actualice
 
         prob_tp = sl_used / (tp_used + sl_used) if (tp_used + sl_used) > 0 else 0.5
         rndm = random.random()
@@ -545,6 +566,8 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
         mdd_after = min(max(mdd, mdd_used, peak_balance - f_mdd_usd), highest_mdd_account)
         if f_mdd_type == "static":
             mdd_after = initial_balance - f_mdd_usd
+        if balance_after >= target_:
+            target_achieved = True
 
 
         if trade_result >= profit_day_usd:
@@ -555,7 +578,9 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
         if balance_after >= target_ and trades >= f_min_days and profit_days >= f_min_profit_days:
             withdrawal_realized = True
             withdrawal = min(balance_after - safety_net_account, max_withdrawal, balance_after - safety_net_account)
+            withdrawal = withdrawal * (withdrawal_cap_pct / 100)
             payout = (withdrawal * (profit_split / 100)) - withdrawal_fee
+            payout = math.floor(payout * 100) / 100
             num_payouts += 1
             profits += payout
 
@@ -589,14 +614,14 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
                 # "mdd_trailing": mdd_trailing,
                 "mdd_used": mdd_used,
                 "balance": balance,
-                "consistency_base": consistency_base,
+                # "consistency_base": consistency_base,
                 # "target_initial": target_initial,
                 # "target_consist": target_consist,
                 # "withdrawal_target": withdrawal_target,
                 # "personal_target": personal_target,
                 # "target_each_payout": target_each_payout,
                 "target_": target_,
-                # "profit_remaining": profit_remaining,
+                "profit_remaining": profit_remaining,
                 "tp_used": tp_used,
                 "sl_used": sl_used,
                 "prob_tp": prob_tp,
@@ -632,7 +657,7 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
 
 
 def _should_save_results(config, account_type) -> bool:
-    if config.num_sims < 200000:
+    if config.num_sims < 2:
         return False
     if account_type == 'eval':
         if len(config.modes) <= 1:
@@ -691,17 +716,8 @@ def _read_results_in_csv(account, account_type: Literal["eval", "funded"]):
         return list(reader)
 
 def _save_eval_final_results_in_csv(final_results, account, new_file: bool):
-    # exports_root = Path(__file__).resolve().parent / "exports"
-    # company_short = _sanitize_filename(account.get("company", {}).get("short_name", "unknown"))
-    # eval_name = _sanitize_filename(account.get("eval1_conditions", {}).get("name", "eval"))
-    # eval_id = account.get("eval1_conditions", {}).get("id", "unknown")
 
-    # folder = exports_root / company_short
-    # folder.mkdir(parents=True, exist_ok=True)
-
-    # file_name = f"eval_{eval_name}_{eval_id}.csv"
-    # file_path = folder / file_name
-    file_path = get_csv_file_path(account, "funded")
+    file_path = get_csv_file_path(account, "eval")
     if not final_results:
         return file_path
 
@@ -723,20 +739,10 @@ def _save_eval_final_results_in_csv(final_results, account, new_file: bool):
             
             writer.writerows(final_results)
 
-        print("Resultados añadidos correctamente")
         return file_path
 
 def _save_funded_final_results_in_csv(final_results, account, new_file: bool):
-    # exports_root = Path(__file__).resolve().parent / "exports"
-    # company_short = _sanitize_filename(account.get("company", {}).get("short_name", "unknown"))
-    # funded_name = _sanitize_filename(account.get("funded_conditions", {}).get("name"))
-    # funded_id = account.get("funded_conditions", {}).get("id", "unknown")
 
-    # folder = exports_root / company_short
-    # folder.mkdir(parents=True, exist_ok=True)
-
-    # file_name = f"funded_{funded_name}_{funded_id}.csv"
-    # file_path = folder / file_name
     file_path = get_csv_file_path(account, "funded")
 
     if not final_results:
@@ -760,7 +766,6 @@ def _save_funded_final_results_in_csv(final_results, account, new_file: bool):
             
             writer.writerows(final_results)
 
-        print("Resultados añadidos correctamente")
         return file_path
 
 
@@ -832,7 +837,6 @@ def _get_best_results_from_funded_final_results(final_results):
         "p_prob*payouts",
         "payouts/month",
     ]
-
     best_results = []
 
     for category in categories:
@@ -865,7 +869,6 @@ def montecarlo_simulation_eval(account, config, combinations):
             account_results = account_data['results']
             if account_results['num_evals'] == 0:
                 continue
-            # print(f'account_results: {account_results}')
             combination_results['total_sims'] += 1
             combination_results['total_evals'] += account_results['num_evals']
             combination_results['total_resets'] += account_results['resets']
@@ -873,14 +876,12 @@ def montecarlo_simulation_eval(account, config, combinations):
             combination_results['total_passed'] += account_results['passed']
             combination_results['total_cost'] += account_results['cost']
             comb_all_results.append(account_results)
-        # print(f'comb_all_results: {comb_all_results}')
         if combination_results['total_evals'] == 0:
             continue
         combination_results['fund_cost'] = round(combination_results['total_cost'] / combination_results['total_passed'], 2) if combination_results['total_passed'] > 0 else 999999
         combination_results['sim_days_avg'] = round(sum(d["sim_days"] for d in comb_all_results) / len(comb_all_results), 1) if len(comb_all_results) else 0
         combination_results = combination_results | comb
         final_results.append(combination_results)
-        # print(f'combination_results: {combination_results}')
 
     best_results = _get_best_results_from_eval_final_results(final_results)
 
@@ -903,17 +904,11 @@ def montecarlo_simulation_funded(account, config, combinations):
         for i in range(config.num_sims):
             account_data = simulate_funded(account, comb)
             account_results = account_data['results']
-            # if account_results['num_evals'] == 0:
-                # continue
-            # print(f'account_results: {account_results}')
             combination_results['total_sims'] += 1
             combination_results['total_profits'] += account_results['profits']
             if account_results['profits'] > 0:
                 combination_results['payout_accounts'] += 1
             comb_all_results.append(account_results)
-        # print(f'comb_all_results: {comb_all_results}')
-        # if combination_results['total_evals'] == 0:
-        #     continue
         combination_results['days_avg'] = round(sum(d["days"] for d in comb_all_results) / len(comb_all_results), 1) if len(comb_all_results) else 0
         combination_results['profits_per_account'] = round(combination_results["total_profits"] / combination_results['total_sims'], 2)
         combination_results['payout_prob'] = round(combination_results["payout_accounts"] / combination_results['total_sims'], 2)
@@ -922,7 +917,6 @@ def montecarlo_simulation_funded(account, config, combinations):
         combination_results['total_profits'] = round(combination_results['total_profits'], 2)
         combination_results = combination_results | comb
         final_results.append(combination_results)
-        # print(f'combination_results: {combination_results}')
 
     best_results = _get_best_results_from_funded_final_results(final_results)
 

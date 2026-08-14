@@ -94,7 +94,7 @@ def load_accounts_with_status() -> Tuple[List[Dict[str, Any]], str]:
 
         # Funded conditions endpoint
         response_funded = requests.get(
-            f"{url}/rest/v1/funded?select=id,name,f_personal_targets_usd,f_mdd_type,f_mdd_usd,f_ddd_usd,f_consistency_pct,f_min_days,f_min_profit_days,f_profit_day_usd,f_tps_usd,f_sls_usd,margins_after_withdrawal,f_target_usd,safety_net_usd,f_highest_mdd_account,mdd_account_after_payout,profit_split,profit_split_type,withdrawal_cap_pct,min_withdrawal,max_withdrawal,max_withdrawals_per_account,withdrawal_fee,target_each_payout,max_num_payouts,monthly_data_fee",
+            f"{url}/rest/v1/funded?select=id,name,f_personal_targets_usd,f_mdd_type,f_mdd_usd,f_ddd_usd,f_consistency_pct,f_min_days,f_min_profit_days,f_profit_day_usd,f_tps_usd,f2_tps_usd,f_sls_usd,f2_sls_usd,margins_after_withdrawal,f_target_usd,safety_net_usd,f_highest_mdd_account,mdd_account_after_payout,profit_split,profit_split_type,withdrawal_cap_pct,min_withdrawal,max_withdrawal,max_withdrawals_per_account,withdrawal_fee,target_each_payout,max_num_payouts,monthly_data_fee, f_ddd_soft_breach",
             headers={"apikey": key, "Authorization": f"Bearer {key}"},
             timeout=10,
         )
@@ -140,21 +140,3 @@ def load_results_with_id(id, account_type: Literal["eval", "funded"]) -> List[Di
     except Exception as e:
         data['exc'] = e
         return data
-
-# def load_accounts() -> List[Dict[str, Any]]:
-#     accounts, _ = load_accounts_with_status()
-#     return accounts
-
-
-# def get_account_groups(accounts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-#     grouped: Dict[str, List[Dict[str, Any]]] = {}
-#     for account in accounts:
-#         company = account.get("company") or {}
-#         company_key = company.get("short_name") or f"C{account.get('company_id', '?')}"
-#         grouped.setdefault(company_key, []).append(account)
-
-#     groups = []
-#     for key in sorted(grouped):
-#         group_accounts = sorted(grouped[key], key=lambda item: item.get("name", ""))
-#         groups.append({"company_name": key, "accounts": group_accounts})
-#     return groups

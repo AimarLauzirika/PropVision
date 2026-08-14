@@ -142,7 +142,7 @@ def _render_simulation_page(
         selected_comb = st.selectbox(
             "Selecciona una combinación para ver un ejemplo",
             options=combinations,
-            format_func=lambda comb: f"Payout mode: {comb['payout_mode']} | TP mode: {comb['tp_mode']} | TP: {comb['tp']} | SL: {comb['sl']} | pTarget: {comb['personal_target']} | Margin: {comb['margin']}",
+            format_func=lambda comb: f"Payout mode: {comb['payout_mode']} | TP mode: {comb['tp_mode']} | TP: {comb['tp']} | SL: {comb['sl']} | TP2: {comb['tp2']} | SL2: {comb['sl2']} | pTarget: {comb['personal_target']} | Margin: {comb['margin']}",
         )
 
         if st.button("Generar nuevo ejemplo"):
@@ -222,22 +222,36 @@ def _render_simulation_page(
                 """,
                 unsafe_allow_html=True,
             )
-            st.dataframe(data["results"])
+            st.dataframe(
+                data["results"], 
+                column_order=("result_type", "profits_per_account", "payouts/month", "days_avg", "payout_prob", "payout_mode", "tp_mode", "tp", "sl", "tp2", "sl2", "personal_target", "margin")
+            )
 
-            eval_conditions_fields = [
-                "e_target_usd",
-                "e_mdd_usd",
-                "e_mdd_type",
-                "e_ddd_usd",
-                "e_consistency_pct",
-                "e_min_days",
-                "e_min_profit_days",
-                "e_profit_day_usd",
-                "reset_prices",
-                "e_suscription_type",
-                "activation_fee_usd",
+            funded_conditions_fields = [
+                "f_target_usd",
+                "safety_net",
+                "f_consistency_pct",
+                "f_min_days",
+                "f_min_profit_days",
+                "f_profit_day_usd",
+                "f_mdd_usd",
+                "f_mdd_type",
+                "f_ddd_usd",
+                "f_ddd_soft_breach",
+                "f_highest_mdd_account",
+                "mdd_account_after_payout",
+                "profit_split",
+                "profit_split_type",
+                "withdrawal_cap_pct",
+                "min_withdrawal",
+                "max_withdrawal",
+                "max_withdrawals_per_account",
+                "withdrawal_fee",
+                "max_num_payouts",
+                "monthly_data_fee",
+                "target_each_payout",
             ]
-            for condition in eval_conditions_fields:
+            for condition in funded_conditions_fields:
                 if data["results"][0].get(condition) != account["funded_conditions"].get(condition):
                     same_conditions = False
                     st.warning(
@@ -245,28 +259,42 @@ def _render_simulation_page(
                     )
 
             if same_conditions:
+                results_f2_tps_usd = [0] if data["results"][0]["f2_tps_usd"] == None else data["results"][0]["f2_tps_usd"]
+                results_f2_sls_usd = [0] if data["results"][0]["f2_sls_usd"] == None else data["results"][0]["f2_sls_usd"]
+                results_personal_targets_usd = [0] if data["results"][0]["f_personal_targets_usd"] == None else data["results"][0]["f_personal_targets_usd"]
+                results_margins_usd = [0] if data["results"][0]["margins_after_withdrawal"] == None else data["results"][0]["margins_after_withdrawal"]
                 st.info("Todas las CONDICIONES coinciden con los resultados de la BD.")
                 new_tps = list(set(account["funded_conditions"]["f_tps_usd"]) - set(data["results"][0]["f_tps_usd"]))
                 new_sls = list(set(account["funded_conditions"]["f_sls_usd"]) - set(data["results"][0]["f_sls_usd"]))
+                if not account["funded_conditions"]["f2_tps_usd"]:
+                    account["funded_conditions"]["f2_tps_usd"] = [0]
+                new_f2_tps = list(set(account["funded_conditions"]["f2_tps_usd"]) - set(results_f2_tps_usd))
+                if not account["funded_conditions"]["f2_sls_usd"]:
+                    account["funded_conditions"]["f2_sls_usd"] = [0]
+                new_f2_sls = list(set(account["funded_conditions"]["f2_sls_usd"]) - set(results_f2_sls_usd))
                 if not account["funded_conditions"]["f_personal_targets_usd"]:
                     account["funded_conditions"]["f_personal_targets_usd"] = [0]
+                new_personal_targets = list(set(account["funded_conditions"]["f_personal_targets_usd"]) - set(results_personal_targets_usd))
                 if not data["results"][0]["f_personal_targets_usd"]:
                     data["results"][0]["f_personal_targets_usd"] = [0]
                 if not account["funded_conditions"]["margins_after_withdrawal"]:
                     account["funded_conditions"]["margins_after_withdrawal"] = [0]
+                new_margins = list(set(account["funded_conditions"]["margins_after_withdrawal"]) - set(results_margins_usd))
                 if not data["results"][0]["margins_after_withdrawal"]:
                     data["results"][0]["margins_after_withdrawal"] = [0]
-                new_personal_targets = list(set(account["funded_conditions"]["f_personal_targets_usd"]) - set(data["results"][0]["f_personal_targets_usd"]))
-                new_margins = list(set(account["funded_conditions"]["margins_after_withdrawal"]) - set(data["results"][0]["margins_after_withdrawal"]))
                 if new_tps:
                     st.warning(f'Hay TPs que faltan en la BD: {new_tps}.')
                 if new_sls:
                     st.warning(f'Hay SLs que faltan en la BD: {new_sls}.')
+                if new_f2_tps:
+                    st.warning(f'Hay TP2s que faltan en la BD: {new_f2_tps}.')
+                if new_f2_sls:
+                    st.warning(f'Hay SL2s que faltan en la BD: {new_f2_sls}.')
                 if new_personal_targets:
                     st.warning(f'Hay personal_targets que faltan en la BD: {new_personal_targets}.')
                 if new_margins:
                     st.warning(f'Hay margins que faltan en la BD: {new_margins}.')
-                if new_tps or new_sls or new_personal_targets or new_margins:
+                if new_tps or new_sls or new_f2_tps or new_f2_sls or new_personal_targets or new_margins:
                     new_combinations = True
 
         if not data["results"] or not same_conditions or new_combinations:
@@ -290,6 +318,7 @@ def _render_simulation_page(
                 if not data["results"] or not same_conditions:
                     final_results, best_results = montecarlo_simulation_funded(account, config, combinations)
                     final_results_with_conditions, best_results_with_conditions = _normalize_funded_results_to_save(final_results, best_results, account)
+                    st.dataframe(best_results_with_conditions)
                     if _should_save_results(config, 'funded') and guardar:
                         csv_path = _save_funded_final_results_in_csv(final_results_with_conditions, account, new_file=True)
                         st.success(f"Resultados exportados a CSV: {csv_path}")
@@ -312,7 +341,7 @@ def _render_simulation_page(
                             st.warning(f"No se pudo guardar en Supabase: {exc}")
 
                 elif same_conditions and new_combinations:
-                    combinations = [c for c in combinations if c["tp"] in new_tps or c["sl"] in new_sls or c["personal_target"] in new_personal_targets or c["margin"] in new_margins]
+                    combinations = [c for c in combinations if c["tp"] in new_tps or c["sl"] in new_f2_tps or c["tp2"] in new_f2_sls or c["sl2"] in new_sls or c["personal_target"] in new_personal_targets or c["margin"] in new_margins]
                     final_results, best_results = montecarlo_simulation_funded(account, config, combinations)
                     final_results_with_conditions, best_results_with_conditions = _normalize_funded_results_to_save(
                         final_results, best_results, account
@@ -329,6 +358,7 @@ def _render_simulation_page(
                         st.success(f"Resultados exportados a CSV: {csv_path}")
                     else:
                         st.warning("No se cumplen las condiciones de guardado o se ha seleccionado no guardar")
+                        st.dataframe(best_results_with_conditions)
                     best_results_with_conditions = _get_best_results_from_funded_final_results(final_results_with_conditions)
                     if _should_save_results(config, 'funded') and guardar:
                         try:
@@ -349,7 +379,7 @@ def _render_simulation_page(
 
 
 def render_funded_page() -> None:
-    st.title(":violet[Fonadeadas] - PropVision")
+    st.title("PropVision - :violet[Fonadeadas]")
     st.caption("Simulaciones de cuentas fondeadas para prop firms con enfoque Monte Carlo.")
     _render_simulation_page(
         page_label="cuentas fondeadas",
