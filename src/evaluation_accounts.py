@@ -222,7 +222,13 @@ def _render_simulation_page(
                 """,
                 unsafe_allow_html=True,
             )
-            st.dataframe(data["results"])
+            results = data["results"]
+            for r in results:
+                r["prob"] = r['total_passed'] / r["total_evals"]
+            st.dataframe(
+                results,
+                column_order=("price", "mode", "reset_trades", "tp", "sl", "reset_cost", "total_sims", "total_evals", "total_reset", "total_renews", "prob", "fund_cost", "sim_days_avg")
+                )
 
             eval_conditions_fields = [
                 "e_target_usd",
@@ -236,6 +242,7 @@ def _render_simulation_page(
                 "reset_prices",
                 "e_suscription_type",
                 "activation_fee_usd",
+                "max_num_resets",
             ]
             for condition in eval_conditions_fields:
                 if data["results"][0].get(condition) != account["eval1_conditions"].get(condition):
@@ -243,7 +250,6 @@ def _render_simulation_page(
                     st.warning(
                         f'Hay condiciones diferentes de los resultados de la BD como el de {condition}, se realizará la simulación de nuevo.'
                     )
-
             if same_conditions:
                 st.info("Todas las CONDICIONES coinciden con los resultados de la BD.")
                 new_prices = list(set(account["eval1_conditions"]["eval_prices"]) - set(data["results"][0]["eval_prices"]))

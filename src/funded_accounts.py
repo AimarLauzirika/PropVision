@@ -92,17 +92,6 @@ def _render_simulation_page(
                 step=1000,
             )
             col21, col22 = st.columns(2)
-            with col21:
-                tp_modes = st.segmented_control(
-                    "TP Mode (All para poder guardar)",
-                    list(FundedSimulationConfig.tp_modes) + ["All"],
-                    default=["All"],
-                    required=True
-                )
-                if tp_modes == "All":
-                    tp_modes = FundedSimulationConfig.tp_modes
-                else:
-                    tp_modes = [tp_modes]
             with col22:
                 payout_modes = st.segmented_control(
                     "Payouts (All para poder guardar)",
@@ -114,6 +103,17 @@ def _render_simulation_page(
                     payout_modes = FundedSimulationConfig.payout_modes
                 else:
                     payout_modes = [payout_modes]
+            with col21:
+                tp_modes = st.segmented_control(
+                    "TP Mode (All para poder guardar)",
+                    list(FundedSimulationConfig.tp_modes) + ["All"],
+                    default=["All"],
+                    required=True
+                )
+                if tp_modes == "All":
+                    tp_modes = FundedSimulationConfig.tp_modes
+                else:
+                    tp_modes = [tp_modes]
 
 
             config = FundedSimulationConfig(
@@ -142,7 +142,7 @@ def _render_simulation_page(
         selected_comb = st.selectbox(
             "Selecciona una combinación para ver un ejemplo",
             options=combinations,
-            format_func=lambda comb: f"Payout mode: {comb['payout_mode']} | TP mode: {comb['tp_mode']} | TP: {comb['tp']} | SL: {comb['sl']} | TP2: {comb['tp2']} | SL2: {comb['sl2']} | pTarget: {comb['personal_target']} | Margin: {comb['margin']}",
+            format_func=lambda comb: f"Payout mode: {comb['payout_mode']} | TP mode: {comb['tp_mode']} | SL: {comb['sl']} | TP: {comb['tp']} | SL2: {comb['sl2']} | TP2: {comb['tp2']} | pTarget: {comb['personal_target']} | Margin: {comb['margin']}",
         )
 
         if st.button("Generar nuevo ejemplo"):
@@ -164,11 +164,11 @@ def _render_simulation_page(
                 st.markdown(
                     f"""
                     <div style="line-height:1.7;">
-                    <strong>Resultados:</strong> {results}<br>
+                    <strong>Resultados: </strong>{results}<br>
                     """,
                     unsafe_allow_html=True,
                 )
-                st.dataframe(trades, height=500, width="stretch")
+                st.dataframe(trades, height=500, width="stretch", column_order=('days', 'mdd_used', 'balance', 'target_', 'profit_remaining', 'tp_used', 'sl_used', 'prob_tp', 'trade_result', 'ddd_failed', 'mdd_failed', 'account_end', 'withdrawal', 'payout', 'balance_after', 'mdd_after', 'traded_days', 'profit_days', 'profits', 'cost', 'cost_total'))
 
     with st.expander(montecarlo_label, expanded=True):
         if not selected_accounts:
@@ -181,7 +181,7 @@ def _render_simulation_page(
         if data["exc"]:
             st.error(f'Error con supabase: {data["exc"]}')
         elif not data["results"]:
-            st.info('No se encontraron resultados para esta cuentas fondeadas en la base de datos.')
+            st.warning('No se encontraron resultados para esta cuentas fondeadas en la base de datos.')
             if _csv_file_exist(account, 'funded'):
                 results_from_csv = _read_results_in_csv(account, 'funded')
                 if results_from_csv:
@@ -224,7 +224,7 @@ def _render_simulation_page(
             )
             st.dataframe(
                 data["results"], 
-                column_order=("result_type", "profits_per_account", "payouts/month", "days_avg", "payout_prob", "payout_mode", "tp_mode", "tp", "sl", "tp2", "sl2", "personal_target", "margin")
+                column_order=("criteria", "profits_per_account", "p_prob*payouts", "payouts/month", "days_avg", "payout_prob", "payout_mode", "tp_mode", "tp", "sl", "tp2", "sl2", "personal_target", "margin")
             )
 
             funded_conditions_fields = [
@@ -376,7 +376,78 @@ def _render_simulation_page(
                         except Exception as exc:
                             st.warning(f"No se pudo guardar en Supabase: {exc}")
 
+    with st.expander("Combinación personalizada", expanded=True):
+        col11, col12, col13, col14 = st.columns(4)
+        col21, col22, col23, col24 = st.columns(4)
+        with col11:
+            payout_mode = st.segmented_control(
+                "Payout Mode",
+                list(FundedSimulationConfig.payout_modes),
+                required=True
+            )
+        with col12:
+            tp_mode = st.segmented_control(
+                "TP Mode",
+                list(FundedSimulationConfig.tp_modes),
+                required=True
+            )
+        with col13:
+            personal_target = st.number_input("Personal target", min_value=0, max_value=99999, step=1000)
+        with col14:
+            margin = st.number_input("Margen después del retiro", min_value=0, max_value=99999, step=5)
+        with col21:
+            tp = st.number_input("TP", min_value=0, max_value=99999, step=5)
+        with col22:
+            sl = st.number_input("SL", min_value=0, max_value=99999, step=5)
+        with col23:
+            tp2 = st.number_input("TP2", min_value=0, max_value=99999, step=5)
+        with col24:
+            sl2 = st.number_input("SL2", min_value=0, max_value=99999, step=5)
 
+        num_sims = st.number_input("Número de simulaciones", min_value=0, max_value=500000, value=200000, step=1)
+        # config["num_sims"] = num_sims
+        config = FundedSimulationConfig(
+            num_sims=num_sims,
+            # tp_modes=tp_mode,
+            # payout_modes=payout_mode,
+            # reset_trades=tuple(range(min_reset, max_reset + 1)),
+        )
+
+        if st.button("Empezar"):
+            if not payout_mode or not tp_mode or not tp or not sl:
+                st.error("Elige Payout Mode, TP Mode, TP y SL")
+            elif not num_sims:
+                st.error("Elige un número de simulaciones")
+            else:
+                combinations = []
+                comb = {
+                    "personal_target": int(personal_target),
+                    "margin": int(margin),
+                    "payout_mode": payout_mode,
+                    "tp_mode": tp_mode,
+                    "sl": int(sl),
+                    "tp": int(tp),
+                    "sl2": int(sl2),
+                    "tp2": int(tp2),
+                }
+                combinations.append(comb)
+                final_results, best_results = montecarlo_simulation_funded(account, config, combinations)
+                st.dataframe(best_results)
+                results = {}
+                results['num_payouts'] = 0
+                tries = 0
+                max_tries = 1000
+                min_num_payouts = 2
+                while results['num_payouts'] < min_num_payouts:
+                    tries += 1
+                    data = simulate_fn(account, comb)
+                    trades, results = data["trades"], data["results"]
+                    if tries == max_tries:
+                        break
+                st.write(f"Ejemplo que tenga al menos {min_num_payouts} retiro(s). Ejemplo encontrado al {tries} intento de un máximo de {max_tries}")
+                st.write(f"Resultados: {results}")
+                st.dataframe(trades, column_order=('days', 'mdd_used', 'balance', 'target_', 'profit_remaining', 'tp_used', 'sl_used', 'prob_tp', 'trade_result', 'ddd_failed', 'mdd_failed', 'account_end', 'withdrawal', 'payout', 'balance_after', 'mdd_after', 'traded_days', 'profit_days', 'profits'))
+                    
 
 def render_funded_page() -> None:
     st.title("PropVision - :violet[Fonadeadas]")

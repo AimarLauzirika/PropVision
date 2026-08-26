@@ -29,6 +29,7 @@ def _mock_accounts() -> List[Dict[str, Any]]:
             "name": "GAUU50",
             "company_id": 1,
             "initial_balance": 10000,
+            "current_price": 50,
             "e1_target_usd": 12000,
             "e_mdd_type": "static",
             "a_mdd_usd": 8000,
@@ -71,7 +72,7 @@ def load_accounts_with_status() -> Tuple[List[Dict[str, Any]], str]:
 
         # Accounts endpoint
         response_accounts = requests.get(
-            f"{url}/rest/v1/accounts?select=id,name,company_id,initial_balance,eval1_id,funded_id",
+            f"{url}/rest/v1/accounts?select=id,name,company_id,initial_balance,current_price,eval1_id,funded_id",
             # f"{url}/rest/v1/accounts?select=id,name,company_id,initial_balance,e1_target_usd,e_mdd_type,a_mdd_usd,e_ddd_usd,e_consistency_pct,e_min_days,e_min_profit_days,a_profit_day_usd,e_suscription_type,activation_fee_usd,e_tps_usd,e_sls_usd,reset_prices,eval_prices,eval1_id",
             headers={"apikey": key, "Authorization": f"Bearer {key}"},
             timeout=10,
@@ -82,7 +83,7 @@ def load_accounts_with_status() -> Tuple[List[Dict[str, Any]], str]:
 
         # Eval conditions endpoint
         response_evals = requests.get(
-            f"{url}/rest/v1/evals?select=id,name,e_target_usd,e_mdd_type,e_mdd_usd,e_ddd_usd,e_consistency_pct,e_min_days,e_min_profit_days,e_profit_day_usd,e_suscription_type,activation_fee_usd,e_tps_usd,e_sls_usd,reset_prices,eval_prices",
+            f"{url}/rest/v1/evals?select=id,name,e_target_usd,e_mdd_type,e_mdd_usd,e_ddd_usd,e_consistency_pct,e_min_days,e_min_profit_days,e_profit_day_usd,e_suscription_type,activation_fee_usd,e_tps_usd,e_sls_usd,reset_prices,eval_prices,max_num_resets",
             headers={"apikey": key, "Authorization": f"Bearer {key}"},
             timeout=10,
         )
@@ -140,3 +141,20 @@ def load_results_with_id(id, account_type: Literal["eval", "funded"]) -> List[Di
     except Exception as e:
         data['exc'] = e
         return data
+def load_all_accounts_results() -> List[Dict[str, Any]]:
+    try:
+        data = {'results': [], 'exc': ''}
+        response = (
+            supabase.table("accounts_sim_results")
+            .select("*")
+            .execute()
+        )
+        
+        results = response.data
+        data['results'] = results
+        return data
+            
+    except Exception as e:
+        data['exc'] = e
+        return data
+
