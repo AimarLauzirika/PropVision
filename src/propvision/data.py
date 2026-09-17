@@ -141,6 +141,7 @@ def load_results_with_id(id, account_type: Literal["eval", "funded"]) -> List[Di
     except Exception as e:
         data['exc'] = e
         return data
+
 def load_all_accounts_results() -> List[Dict[str, Any]]:
     try:
         data = {'results': [], 'exc': ''}

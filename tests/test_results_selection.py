@@ -5,6 +5,7 @@ from src.results import (
     _build_account_selection_options,
     _filter_account_result_rows,
     _get_account_criteria_options,
+    _find_accounts_with_invalid_prices,
 )
 
 
@@ -65,3 +66,22 @@ def test_results_search_uses_full_account_dataset_and_fixed_criteria():
     matches = _filter_account_result_rows(dataframe, 1, 75, "payouts/month")
     assert len(matches) == 1
     assert matches.iloc[0]["price"] == 75
+
+
+def test_find_accounts_with_invalid_current_price():
+    dataframe = pd.DataFrame(
+        [
+            {"account_id": 1},
+            {"account_id": 2},
+            {"account_id": 3},
+        ]
+    )
+    accounts = [
+        {"id": 1, "name": "Valid", "current_price": 50, "eval1_conditions": {"eval_prices": [50, 75]}},
+        {"id": 2, "name": "Missing", "current_price": None, "eval1_conditions": {"eval_prices": [100, 125]}},
+        {"id": 3, "name": "Invalid", "current_price": 90, "eval1_conditions": {"eval_prices": [100, 125]}},
+    ]
+
+    invalid = _find_accounts_with_invalid_prices(dataframe, accounts)
+
+    assert [account["id"] for account in invalid] == [2, 3]

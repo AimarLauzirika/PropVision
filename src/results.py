@@ -156,6 +156,45 @@ def _with_account_metadata(
     return pd.DataFrame(rows)
 
 
+def _find_accounts_with_invalid_prices(
+    dataframe: pd.DataFrame, accounts: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    if dataframe.empty or "account_id" not in dataframe.columns:
+        return []
+
+    result_account_ids = set(
+        pd.to_numeric(dataframe["account_id"], errors="coerce")
+        .dropna()
+        .astype(int)
+        .tolist()
+    )
+    invalid_accounts = []
+
+    for account in accounts:
+        account_id = account.get("id")
+        if account_id is None or int(account_id) not in result_account_ids:
+            continue
+
+        eval_conditions = account.get("eval1_conditions") or {}
+        eval_prices = eval_conditions.get("eval_prices") or []
+        valid_prices = []
+        for price in eval_prices:
+            try:
+                valid_prices.append(float(price))
+            except (TypeError, ValueError):
+                continue
+
+        try:
+            current_price = float(account.get("current_price"))
+        except (TypeError, ValueError):
+            current_price = None
+
+        if current_price is None or current_price not in valid_prices:
+            invalid_accounts.append(account)
+
+    return invalid_accounts
+
+
 def _format_conditions(conditions: Any) -> Dict[str, Any]:
     if not isinstance(conditions, dict):
         return {"estado": "No hay condiciones disponibles"}
@@ -188,6 +227,64 @@ def render_results_page() -> None:
     if dataframe.empty:
         st.info("No hay resultados de cuentas para mostrar.")
         return
+
+    invalid_price_accounts = _find_accounts_with_invalid_prices(dataframe, accounts)
+    if invalid_price_accounts:
+        st.warning(
+            "Hay cuentas con resultados cuyo precio actual no coincide con "
+            "ningún precio disponible en eval1_conditions.eval_prices. "
+            "Selecciona un precio válido para continuar."
+        )
+        pending_updates = False
+        for account in invalid_price_accounts:
+            account_id = account["id"]
+            company = account.get("company") or {}
+            company_name = company.get("long_name") or company.get("short_name") or "Sin compañía"
+            account_name = account.get("name") or f"Cuenta {account_id}"
+            eval_conditions = account.get("eval1_conditions") or {}
+            eval_prices = []
+            for price in eval_conditions.get("eval_prices") or []:
+                try:
+                    numeric_price = float(price)
+                except (TypeError, ValueError):
+                    continue
+                if numeric_price not in eval_prices:
+                    eval_prices.append(numeric_price)
+
+            with st.container(border=True):
+                st.markdown(f"**{company_name} | {account_name}**")
+                if not eval_prices:
+                    st.error("Esta cuenta no tiene precios válidos en eval_prices para seleccionar.")
+                    pending_updates = True
+                    continue
+
+                pending_updates = True
+                with st.form(f"set_current_price_{account_id}"):
+                    selected_price = st.segmented_control(
+                        "Precio actual",
+                        options=sorted(eval_prices),
+                        default=sorted(eval_prices)[0],
+                    )
+                    save_price = st.form_submit_button("Guardar precio", type="primary")
+
+                if save_price:
+                    try:
+                        query = (
+                            supabase.table("accounts")
+                            .update({"current_price": selected_price})
+                            .eq("id", account_id)
+                            .select("id,current_price")
+                            .execute()
+                        )
+                        if query.data:
+                            st.success("Precio actual guardado correctamente.")
+                            st.rerun()
+                        st.error("No se encontró la cuenta para actualizar.")
+                    except Exception as exc:
+                        st.error(f"No se pudo guardar el precio actual: {exc}")
+
+        if pending_updates:
+            return
 
     with st.sidebar:
         st.subheader("Filtros")
