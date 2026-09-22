@@ -587,6 +587,9 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
             withdrawal = withdrawal * (withdrawal_cap_pct / 100)
             payout = (withdrawal * (profit_split / 100)) - withdrawal_fee
             payout = math.floor(payout * 100) / 100
+            # Comisión de BlueGuardianFutures por el retiro
+            if account['company_id'] == 30:
+                payout = payout * 0.97
             num_payouts += 1
             profits += payout
 
