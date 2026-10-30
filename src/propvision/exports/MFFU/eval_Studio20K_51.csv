@@ -1,0 +1,7 @@
+total_sims,total_evals,total_resets,total_renews,total_passed,total_cost,sim_days_avg,fund_cost,price,mode,sl,tp,reset_trades,reset_cost,e_target_usd,e_mdd_type,e_mdd_usd,e_ddd_usd,e_consistency_pct,e_min_days,e_min_profit_days,e_profit_day_usd,e_suscription_type,activation_fee_usd,e_tps_usd,e_sls_usd,reset_prices,eval_prices,max_num_resets,eval_id
+200000,200000,0,0,64802,56000000.0,2.1,864.17,280.0,Max,1000,1100,0,,2000.0,static,1000.0,,,,,,one_time_lifetime,,"[1100, 2200]","[1000, 2000, 3000]",,[280.0],,51
+200000,200000,0,0,64513,56000000.0,1.0,868.04,280.0,Max,1000,2200,0,,2000.0,static,1000.0,,,,,,one_time_lifetime,,"[1100, 2200]","[1000, 2000, 3000]",,[280.0],,51
+200000,200000,0,0,64975,56000000.0,1.6,861.87,280.0,Max,2000,1100,0,,2000.0,static,1000.0,,,,,,one_time_lifetime,,"[1100, 2200]","[1000, 2000, 3000]",,[280.0],,51
+200000,200000,0,0,64961,56000000.0,1.0,862.06,280.0,Max,2000,2200,0,,2000.0,static,1000.0,,,,,,one_time_lifetime,,"[1100, 2200]","[1000, 2000, 3000]",,[280.0],,51
+200000,200000,0,0,0,0.0,0.0,999999.0,280.0,Max,3000,1100,0,,2000.0,static,1000.0,,,,,,one_time_lifetime,,"[1100, 2200]","[1000, 2000, 3000]",,[280.0],,51
+200000,200000,0,0,0,0.0,0.0,999999.0,280.0,Max,3000,2200,0,,2000.0,static,1000.0,,,,,,one_time_lifetime,,"[1100, 2200]","[1000, 2000, 3000]",,[280.0],,51

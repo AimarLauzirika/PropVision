@@ -507,6 +507,9 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
             profit_days = 0
             trades = 1
 
+        if days == 1:
+            target_each_payout = balance + target_each_payout_usd
+
         if withdrawal_realized:
             trades = 1
             profit_days = 0
@@ -555,7 +558,7 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
         if consistency_pct < 100:
             # consistency_base = initial_balance
             target_consist = max(target_consist, consistency_base + (tp_used / (consistency_pct / 100)) + general_commission)
-        target_each_payout = consistency_base + target_each_payout_usd
+        # target_each_payout = consistency_base + target_each_payout_usd
         target_ = max(target_, target_consist, personal_target, withdrawal_target, target_each_payout)
         profit_remaining = target_ - balance #? Para que se actualice
 
@@ -590,6 +593,9 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
             # Comisión de BlueGuardianFutures por el retiro
             if account['company_id'] == 30:
                 payout = payout * 0.97
+            # Comisión de FundedNext por el retiro
+            if account['company_id'] == 11:
+                payout = payout * 0.965
             num_payouts += 1
             profits += payout
 
@@ -599,7 +605,12 @@ def simulate_funded(account: Dict[str, Any], combo: Dict[str, Any]) -> List[Dict
             if account['company']['id'] == 43:
                 mdd_after = balance_after * 0.96
             personal_target = initial_balance
-            target_ = max(target_consist, withdrawal_target, target_each_payout)
+            if target_each_payout_usd > 0:
+                target_each_payout = balance_after + target_each_payout_usd
+
+            # target_ = max(target_consist, withdrawal_target, target_each_payout)
+            # target_ = max(target_, target_consist, personal_target, withdrawal_target, target_each_payout)
+            target_ = max(target_consist, personal_target, withdrawal_target, target_each_payout)
 
         #? Finales de cuenta
 
